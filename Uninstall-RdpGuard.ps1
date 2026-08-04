@@ -7,6 +7,7 @@ $ErrorActionPreference = 'Stop'
 $ServiceName = 'RdpGuard'
 $InstallDirectory = Join-Path $env:ProgramData 'RdpGuard'
 $TargetExecutable = Join-Path $InstallDirectory 'rdpguard.exe'
+$TargetMonitor = Join-Path $InstallDirectory 'rdpguard-monitor.exe'
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -37,8 +38,12 @@ if ($RemoveData) {
         if ($resolved -ne $expected) { throw "Refusing to remove unexpected path: $resolved" }
         Remove-Item -LiteralPath $resolved -Recurse -Force
     }
-} elseif (Test-Path -LiteralPath $TargetExecutable) {
-    Remove-Item -LiteralPath $TargetExecutable -Force
+} else {
+    foreach ($binary in @($TargetExecutable, $TargetMonitor)) {
+        if (Test-Path -LiteralPath $binary) {
+            Remove-Item -LiteralPath $binary -Force
+        }
+    }
 }
 
 Write-Output 'RdpGuard service and automatic firewall rules were removed.'

@@ -1,4 +1,5 @@
 const INSTALLER: &str = include_str!("../Install-RdpGuard.ps1");
+const UNINSTALLER: &str = include_str!("../Uninstall-RdpGuard.ps1");
 
 #[test]
 fn non_admin_install_self_elevates_via_uac() {
@@ -39,4 +40,11 @@ fn installed_monitor_is_executable_before_it_requests_uac() {
         INSTALLER.contains("*S-1-5-32-545:RX"),
         "the protected install directory must grant Users read/execute on the monitor only"
     );
+}
+
+#[test]
+fn default_uninstall_removes_both_binaries_but_preserves_data() {
+    assert!(UNINSTALLER.contains("$TargetMonitor"));
+    assert!(UNINSTALLER.contains("@($TargetExecutable, $TargetMonitor)"));
+    assert!(UNINSTALLER.contains("Remove-Item -LiteralPath $binary -Force"));
 }
