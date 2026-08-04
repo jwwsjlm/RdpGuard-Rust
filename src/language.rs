@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-use windows_sys::Win32::Globalization::GetUserDefaultLocaleName;
+use windows_sys::Win32::Globalization::GetUserDefaultUILanguage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Language {
@@ -17,14 +17,14 @@ impl Language {
     }
 
     pub fn detect() -> Self {
-        let mut buffer = [0u16; 85];
-        let length = unsafe { GetUserDefaultLocaleName(buffer.as_mut_ptr(), buffer.len() as i32) };
-        if length <= 1 {
-            return Self::English;
+        const PRIMARY_LANGUAGE_MASK: u16 = 0x03ff;
+        const CHINESE_PRIMARY_LANGUAGE: u16 = 0x0004;
+        let language_id = unsafe { GetUserDefaultUILanguage() };
+        if language_id & PRIMARY_LANGUAGE_MASK == CHINESE_PRIMARY_LANGUAGE {
+            Self::Chinese
+        } else {
+            Self::English
         }
-        String::from_utf16(&buffer[..length as usize - 1])
-            .map(|locale| Self::from_locale_name(&locale))
-            .unwrap_or(Self::English)
     }
 
     pub fn parse_cli(value: &str) -> Result<Self> {
