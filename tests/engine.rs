@@ -4,7 +4,7 @@ use anyhow::{Result, anyhow};
 use chrono::{Duration, TimeZone, Utc};
 use rdpguard::{
     config::Config,
-    engine::{RunReport, StateStore, run_once},
+    engine::{RunReport, StateStore, run_once, run_once_observed},
     events::EventSource,
     firewall::{Firewall, FirewallChange},
     policy::Action,
@@ -213,4 +213,57 @@ fn failed_state_save_returns_no_action_report_and_rolls_back() {
         firewall.changes,
         vec![FirewallChange::Block(ip()), FirewallChange::Unblock(ip())]
     );
+}
+
+#[test]
+fn successful_action_is_observed_before_a_later_action_fails() {
+    struct FailSecondBlock {
+        calls: usize,
+    }
+
+    impl Firewall for FailSecondBlock {
+        fn block(&mut self, _ip: IpAddr) -> Result<()> {
+            self.calls += 1;
+            if self.calls == 2 {
+                Err(anyhow!("second firewall change failed"))
+            } else {
+                Ok(())
+            }
+        }
+
+        fn unblock(&mut self, _ip: IpAddr) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    let first_ip: IpAddr = "45.227.254.154".parse().unwrap();
+    let second_ip: IpAddr = "45.227.254.155".parse().unwrap();
+    let mut failures = vec![first_ip; 5];
+    failures.extend(vec![second_ip; 5]);
+    let mut events = FakeEvents(Ok(failures));
+    let mut firewall = FailSecondBlock { calls: 0 };
+    let mut store = MemoryState::default();
+    let mut observed = Vec::new();
+    let now = Utc.with_ymd_and_hms(2026, 8, 4, 12, 0, 0).unwrap();
+
+    let result = run_once_observed(
+        &mut events,
+        &mut firewall,
+        &mut store,
+        now,
+        &Config::default(),
+        |action| {
+            observed.push(action.clone());
+            Ok(())
+        },
+    );
+
+    assert!(result.is_err());
+    assert_eq!(observed.len(), 1);
+    assert!(matches!(
+        observed[0],
+        Action::Block { ip, failures: 5, .. } if ip == first_ip
+    ));
+    assert!(store.state.blocks.contains_key(&first_ip));
+    assert!(!store.state.blocks.contains_key(&second_ip));
 }

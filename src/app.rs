@@ -5,7 +5,7 @@ use chrono::Utc;
 
 use crate::{
     config::Config,
-    engine::{FileStateStore, MemoryStateStore, RunReport, run_once},
+    engine::{FileStateStore, MemoryStateStore, RunReport, run_once, run_once_observed},
     events::WindowsEventSource,
     firewall::{DryRunFirewall, FirewallChange, WindowsFirewall},
     logging,
@@ -47,7 +47,14 @@ pub fn execute_once(paths: &AppPaths, dry_run: bool) -> Result<RunOutcome> {
         let state = load_state(&paths.state)?;
         let mut store = MemoryStateStore::new(state);
         let mut firewall = DryRunFirewall::default();
-        let report = run_once(&mut events, &mut firewall, &mut store, now, &config)?;
+        let report = run_once_observed(
+            &mut events,
+            &mut firewall,
+            &mut store,
+            now,
+            &config,
+            |action| log_applied_action(&paths.log, action),
+        )?;
         RunOutcome {
             report,
             planned_changes: firewall.changes,
@@ -64,7 +71,9 @@ pub fn execute_once(paths: &AppPaths, dry_run: bool) -> Result<RunOutcome> {
         }
     };
 
-    log_run_report(&paths.log, dry_run, &outcome.report)?;
+    if !dry_run {
+        log_run_summary(&paths.log, &outcome.report)?;
+    }
     Ok(outcome)
 }
 
@@ -73,23 +82,29 @@ pub fn log_run_report(path: &Path, dry_run: bool, report: &RunReport) -> Result<
         return Ok(());
     }
     for action in &report.applied_actions {
-        match action {
-            Action::Block {
-                ip,
-                failures,
-                expires_at,
-            } => logging::append(
-                path,
-                &format!(
-                    "block applied: ip={ip}, failures={failures}, expires_at={}",
-                    expires_at.to_rfc3339()
-                ),
-            )?,
-            Action::Unblock { ip } => {
-                logging::append(path, &format!("unblock applied: ip={ip}"))?;
-            }
-        }
+        log_applied_action(path, action)?;
     }
+    log_run_summary(path, report)
+}
+
+fn log_applied_action(path: &Path, action: &Action) -> Result<()> {
+    match action {
+        Action::Block {
+            ip,
+            failures,
+            expires_at,
+        } => logging::append(
+            path,
+            &format!(
+                "block applied: ip={ip}, failures={failures}, expires_at={}",
+                expires_at.to_rfc3339()
+            ),
+        ),
+        Action::Unblock { ip } => logging::append(path, &format!("unblock applied: ip={ip}")),
+    }
+}
+
+fn log_run_summary(path: &Path, report: &RunReport) -> Result<()> {
     logging::append(
         path,
         &format!(

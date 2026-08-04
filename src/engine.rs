@@ -77,6 +77,23 @@ where
     F: Firewall,
     S: StateStore,
 {
+    run_once_observed(events, firewall, store, now, config, |_| Ok(()))
+}
+
+pub fn run_once_observed<E, F, S, O>(
+    events: &mut E,
+    firewall: &mut F,
+    store: &mut S,
+    now: DateTime<Utc>,
+    config: &Config,
+    mut observer: O,
+) -> Result<RunReport>
+where
+    E: EventSource,
+    F: Firewall,
+    S: StateStore,
+    O: FnMut(&Action) -> Result<()>,
+{
     let mut state = store.load().context("failed to load block state")?;
     let failures = events
         .recent_failures(config.window_minutes)
@@ -129,6 +146,12 @@ where
                     failures,
                     expires_at,
                 });
+                observer(
+                    report
+                        .applied_actions
+                        .last()
+                        .expect("action was just added"),
+                )?;
             }
             Action::Unblock { ip } => {
                 firewall
@@ -145,6 +168,12 @@ where
                 }
                 report.unblocked += 1;
                 report.applied_actions.push(Action::Unblock { ip });
+                observer(
+                    report
+                        .applied_actions
+                        .last()
+                        .expect("action was just added"),
+                )?;
             }
         }
     }
