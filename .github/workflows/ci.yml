@@ -45,6 +45,10 @@ jobs:
       - name: Run tests
         run: cargo test --all-targets --locked
 
+      - name: Run PowerShell tests
+        shell: pwsh
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tests\Test-InstallerConfig.ps1
+
       - name: Build release executable
         run: cargo build --release --locked
 
