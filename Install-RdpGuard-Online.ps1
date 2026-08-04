@@ -1,9 +1,9 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param([switch]$LibraryMode)
 
 $ErrorActionPreference = 'Stop'
 $Repository = 'jwwsjlm/RdpGuard-Rust'
-$ReleaseTag = 'v0.3.2'
+$ReleaseTag = 'v0.3.3'
 
 function Resolve-RdpGuardLanguage {
     param(

@@ -16,11 +16,18 @@ function Assert-Throws {
     throw 'expected action to throw'
 }
 
-. "$PSScriptRoot\..\Install-RdpGuard-Online.ps1" -LibraryMode
+$onlineInstaller = Join-Path $PSScriptRoot '..\Install-RdpGuard-Online.ps1'
+$onlineInstallerBytes = [IO.File]::ReadAllBytes($onlineInstaller)
+Assert-True ($onlineInstallerBytes.Length -ge 3) 'online installer must not be empty'
+$hasUtf8Bom = $onlineInstallerBytes[0] -eq 0xEF -and $onlineInstallerBytes[1] -eq 0xBB -and $onlineInstallerBytes[2] -eq 0xBF
+Assert-True (-not $hasUtf8Bom) 'online installer must be UTF-8 without BOM so irm can parse it'
+[void][scriptblock]::Create([IO.File]::ReadAllText($onlineInstaller, [Text.UTF8Encoding]::new($false)))
+
+. $onlineInstaller -LibraryMode
 
 Assert-Equal (Resolve-RdpGuardLanguage -Language auto -UiCulture 'zh-CN') 'zh-CN'
 Assert-Equal (Resolve-RdpGuardLanguage -Language auto -UiCulture 'en-US') 'en-US'
-$archiveName = 'RdpGuard-Rust-v0.3.2.zip'
+$archiveName = "RdpGuard-Rust-$ReleaseTag.zip"
 $hash = 'a' * 64
 Assert-Equal (Get-ExpectedArchiveHash -ChecksumText "$hash  $archiveName`n" -ArchiveName $archiveName) $hash
 Assert-Throws { Get-ExpectedArchiveHash -ChecksumText 'invalid' -ArchiveName $archiveName }

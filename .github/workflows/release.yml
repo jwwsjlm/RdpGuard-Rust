@@ -43,6 +43,15 @@ jobs:
           if (-not ((Get-Content -LiteralPath 'Install-RdpGuard-Online.ps1') -contains $expectedLine)) {
               throw "Online installer release tag does not match $expectedTag"
           }
+          $onlineInstallerBytes = [IO.File]::ReadAllBytes((Resolve-Path 'Install-RdpGuard-Online.ps1'))
+          $hasUtf8Bom = $onlineInstallerBytes.Length -ge 3 -and
+              $onlineInstallerBytes[0] -eq 0xEF -and
+              $onlineInstallerBytes[1] -eq 0xBB -and
+              $onlineInstallerBytes[2] -eq 0xBF
+          if ($hasUtf8Bom) {
+              throw 'Online installer must be UTF-8 without BOM so irm can parse it.'
+          }
+          [void][scriptblock]::Create([IO.File]::ReadAllText('Install-RdpGuard-Online.ps1', [Text.UTF8Encoding]::new($false)))
 
       - name: Check formatting
         run: cargo fmt --check
