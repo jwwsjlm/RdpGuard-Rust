@@ -21,12 +21,15 @@ $onlineInstallerBytes = [IO.File]::ReadAllBytes($onlineInstaller)
 Assert-True ($onlineInstallerBytes.Length -ge 3) 'online installer must not be empty'
 $hasUtf8Bom = $onlineInstallerBytes[0] -eq 0xEF -and $onlineInstallerBytes[1] -eq 0xBB -and $onlineInstallerBytes[2] -eq 0xBF
 Assert-True (-not $hasUtf8Bom) 'online installer must be UTF-8 without BOM so irm can parse it'
+Assert-True (($onlineInstallerBytes | Where-Object { $_ -gt 0x7F }).Count -eq 0) 'online installer source must be ASCII so Windows PowerShell 5.1 can parse it without BOM'
 [void][scriptblock]::Create([IO.File]::ReadAllText($onlineInstaller, [Text.UTF8Encoding]::new($false)))
 
 . $onlineInstaller -LibraryMode
 
 Assert-Equal (Resolve-RdpGuardLanguage -Language auto -UiCulture 'zh-CN') 'zh-CN'
 Assert-Equal (Resolve-RdpGuardLanguage -Language auto -UiCulture 'en-US') 'en-US'
+Assert-Equal ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Get-OnlineText -Language 'zh-CN' -Key Title)))) 'UmRwR3VhcmQg5Zyo57q/5bel5YW3'
+Assert-Equal ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Get-OnlineText -Language 'zh-CN' -Key InvalidChoice)))) '5peg5pWI6YCJ6aG577yM6K+36L6T5YWlIDDjgIEx44CBMiDmiJYgM+OAgg=='
 $archiveName = "RdpGuard-Rust-$ReleaseTag.zip"
 $hash = 'a' * 64
 Assert-Equal (Get-ExpectedArchiveHash -ChecksumText "$hash  $archiveName`n" -ArchiveName $archiveName) $hash

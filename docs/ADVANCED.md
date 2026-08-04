@@ -62,13 +62,13 @@ Cargo 版本、在线脚本内的 `$ReleaseTag` 与 Git 标签必须一致：
 
 ```powershell
 git push origin main
-git tag -a v0.3.3 -m "RdpGuard v0.3.3"
-git push origin v0.3.3
+git tag -a v0.3.4 -m "RdpGuard v0.3.4"
+git push origin v0.3.4
 ```
 
 Release 工作流重新执行格式检查、Clippy、Rust/PowerShell 测试和 release 构建，然后发布：
 
-- `RdpGuard-Rust-v0.3.3.zip`
+- `RdpGuard-Rust-v0.3.4.zip`
 - `SHA256SUMS.txt`
 - `Install-RdpGuard-Online.ps1`
 

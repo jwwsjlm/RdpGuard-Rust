@@ -3,7 +3,12 @@ param([switch]$LibraryMode)
 
 $ErrorActionPreference = 'Stop'
 $Repository = 'jwwsjlm/RdpGuard-Rust'
-$ReleaseTag = 'v0.3.3'
+$ReleaseTag = 'v0.3.4'
+
+function ConvertFrom-OnlineUtf8Base64 {
+    param([Parameter(Mandatory)][string]$Value)
+    return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Value))
+}
 
 function Resolve-RdpGuardLanguage {
     param(
@@ -21,18 +26,18 @@ function Get-OnlineText {
         [Parameter(Mandatory)][string]$Key
     )
     $messages = @{
-        Title = @('RdpGuard 在线工具', 'RdpGuard Online Tool')
-        Install = @('[1] 安装或配置防护服务', '[1] Install or configure protection service')
-        History = @('[2] 查看历史登录日志', '[2] View historical login logs')
-        Language = @('[3] English', '[3] 中文')
-        Exit = @('[0] 退出', '[0] Exit')
-        Choice = @('请选择', 'Select an option')
-        InvalidChoice = @('无效选项，请输入 0、1、2 或 3。', 'Invalid option. Enter 0, 1, 2 or 3.')
-        Downloading = @('正在下载并校验最新正式版...', 'Downloading and verifying the latest stable release...')
-        Ready = @('发布包校验通过。', 'Release package verification passed.')
-        OperationFailed = @('操作失败', 'Operation failed')
-        InstallFailed = @('安装器返回失败状态', 'Installer returned a failure status')
-        MonitorFailed = @('历史日志监控器返回失败状态', 'History monitor returned a failure status')
+        Title = @((ConvertFrom-OnlineUtf8Base64 'UmRwR3VhcmQg5Zyo57q/5bel5YW3'), 'RdpGuard Online Tool')
+        Install = @((ConvertFrom-OnlineUtf8Base64 'WzFdIOWuieijheaIlumFjee9rumYsuaKpOacjeWKoQ=='), '[1] Install or configure protection service')
+        History = @((ConvertFrom-OnlineUtf8Base64 'WzJdIOafpeeci+WOhuWPsueZu+W9leaXpeW/lw=='), '[2] View historical login logs')
+        Language = @('[3] English', (ConvertFrom-OnlineUtf8Base64 'WzNdIOS4reaWhw=='))
+        Exit = @((ConvertFrom-OnlineUtf8Base64 'WzBdIOmAgOWHug=='), '[0] Exit')
+        Choice = @((ConvertFrom-OnlineUtf8Base64 '6K+36YCJ5oup'), 'Select an option')
+        InvalidChoice = @((ConvertFrom-OnlineUtf8Base64 '5peg5pWI6YCJ6aG577yM6K+36L6T5YWlIDDjgIEx44CBMiDmiJYgM+OAgg=='), 'Invalid option. Enter 0, 1, 2 or 3.')
+        Downloading = @((ConvertFrom-OnlineUtf8Base64 '5q2j5Zyo5LiL6L295bm25qCh6aqM5pyA5paw5q2j5byP54mILi4u'), 'Downloading and verifying the latest stable release...')
+        Ready = @((ConvertFrom-OnlineUtf8Base64 '5Y+R5biD5YyF5qCh6aqM6YCa6L+H44CC'), 'Release package verification passed.')
+        OperationFailed = @((ConvertFrom-OnlineUtf8Base64 '5pON5L2c5aSx6LSl'), 'Operation failed')
+        InstallFailed = @((ConvertFrom-OnlineUtf8Base64 '5a6J6KOF5Zmo6L+U5Zue5aSx6LSl54q25oCB'), 'Installer returned a failure status')
+        MonitorFailed = @((ConvertFrom-OnlineUtf8Base64 '5Y6G5Y+y5pel5b+X55uR5o6n5Zmo6L+U5Zue5aSx6LSl54q25oCB'), 'History monitor returned a failure status')
     }
     if (-not $messages.ContainsKey($Key)) { throw "Unknown message key: $Key" }
     if ($Language -eq 'zh-CN') { return $messages[$Key][0] }

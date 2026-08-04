@@ -51,6 +51,9 @@ jobs:
           if ($hasUtf8Bom) {
               throw 'Online installer must be UTF-8 without BOM so irm can parse it.'
           }
+          if (($onlineInstallerBytes | Where-Object { $_ -gt 0x7F }).Count -ne 0) {
+              throw 'Online installer source must be ASCII so Windows PowerShell 5.1 can parse it without BOM.'
+          }
           [void][scriptblock]::Create([IO.File]::ReadAllText('Install-RdpGuard-Online.ps1', [Text.UTF8Encoding]::new($false)))
 
       - name: Check formatting
