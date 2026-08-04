@@ -1,4 +1,4 @@
-# RdpGuard v0.3.0 验收摘要
+# RdpGuard v0.3.1 验收摘要
 
 验收日期：2026-08-05
 
@@ -29,9 +29,6 @@
 
 ## 发布程序
 
-| 文件 | 大小 | SHA-256 |
-| --- | ---: | --- |
-| `rdpguard.exe` | 609,280 字节 | `C6233033A4DB17AA50A5B66BCB47F88C26025E33D441B92B740320F88F6668AD` |
-| `rdpguard-monitor.exe` | 888,832 字节 | `C7BB289C960466CAC8252E7D44D7430D54B3CC6D92262256CDAC8E3A32183182` |
+正式 GitHub Release 由 Windows Actions 使用锁定依赖重新构建，两个程序的 `--version` 输出均须与 Git 标签一致。
 
-两个程序的 `--version` 输出均为 `0.3.0`。正式 GitHub Release 由 Windows Actions 使用锁定依赖重新构建，并随 ZIP 提供 `SHA256SUMS.txt`。
+不同 Windows 构建环境生成的 PE 文件不承诺具有相同的逐文件哈希。官方下载校验以对应 Release 附带的 `SHA256SUMS.txt` 为准；该文件记录整个 ZIP 的 SHA-256。

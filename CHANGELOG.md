@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 - 2026-08-05
+
+- 修正验收摘要中的校验说明：不同 Windows runner 生成的 PE 文件不承诺逐文件可复现哈希。
+- 官方下载校验统一以每个 GitHub Release 附带的 `SHA256SUMS.txt` 为准。
+
 ## 0.3.0 - 2026-08-05
 
 - 新增只读终端工具 `rdpguard-monitor.exe`，按 IP 展示登录成功、登录失败、防护失败、当前连接和封禁状态。

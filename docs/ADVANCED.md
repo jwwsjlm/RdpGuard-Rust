@@ -65,9 +65,9 @@ Copy-Item .\target\release\rdpguard-monitor.exe .\rdpguard-monitor.exe -Force
 Cargo 版本与 Git 标签必须一致：
 
 ```powershell
-git tag -a v0.3.0 -m "RdpGuard v0.3.0"
+git tag -a v0.3.1 -m "RdpGuard v0.3.1"
 git push origin main
-git push origin v0.3.0
+git push origin v0.3.1
 ```
 
 Release 工作流会在 Windows runner 上重新执行格式检查、Clippy、测试和 release 构建，然后发布 ZIP 与 `SHA256SUMS.txt`。
