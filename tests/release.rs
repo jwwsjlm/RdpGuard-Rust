@@ -29,8 +29,13 @@ fn online_launcher_is_an_artifact_and_separate_release_asset() {
         RELEASE_WORKFLOW.contains("$env:ONLINE_INSTALLER_PATH"),
         "release workflow must publish the stable online installer asset"
     );
-    assert!(ONLINE_INSTALLER.contains("$ReleaseTag = 'v0.3.2'"));
+    let expected_tag = format!("$ReleaseTag = 'v{}'", env!("CARGO_PKG_VERSION"));
+    assert!(ONLINE_INSTALLER.contains(&expected_tag));
     assert!(!ONLINE_INSTALLER.contains("api.github.com"));
+    assert!(
+        RELEASE_WORKFLOW.contains("$expectedLine"),
+        "release workflow must verify the online installer tag"
+    );
 }
 
 #[test]

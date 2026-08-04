@@ -39,6 +39,10 @@ jobs:
           if ($env:GITHUB_REF_NAME -ne $expectedTag) {
               throw "Tag $env:GITHUB_REF_NAME does not match Cargo version $expectedTag"
           }
+          $expectedLine = '$ReleaseTag = ' + "'$expectedTag'"
+          if (-not ((Get-Content -LiteralPath 'Install-RdpGuard-Online.ps1') -contains $expectedLine)) {
+              throw "Online installer release tag does not match $expectedTag"
+          }
 
       - name: Check formatting
         run: cargo fmt --check
