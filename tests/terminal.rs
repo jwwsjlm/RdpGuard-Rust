@@ -86,6 +86,9 @@ fn both_pages_render_chinese_and_english_data_and_warnings() {
     assert!(overview.contains("198.51.100.20"));
     assert!(overview.contains("Security 登 录 日 志 读 取 失 败"));
     assert!(overview.contains("access denied"));
+    assert!(overview.contains("RDP 失 败"));
+    assert!(overview.contains("Tab/Shift+Tab"));
+    assert!(overview.contains("q/Esc"));
 
     app.handle_key(KeyCode::Tab);
     let events = rendered_text(&app, 120, 24);
@@ -103,6 +106,19 @@ fn narrow_terminal_renders_without_panicking() {
     let app = MonitorApp::new(sample_snapshot(), Language::Chinese);
     let text = rendered_text(&app, 40, 10);
     assert!(text.contains("RdpGuard"));
+}
+
+#[test]
+fn compact_footer_keeps_all_key_groups_visible() {
+    let app = MonitorApp::new(sample_snapshot(), Language::Chinese);
+    let text = rendered_text(&app, 80, 24);
+    assert!(text.contains("Tab/Shift+Tab"));
+    assert!(text.contains("1:10"));
+    assert!(text.contains("4:7"));
+    assert!(text.contains("r:"));
+    assert!(text.contains("l:"));
+    assert!(text.contains("↑/↓"));
+    assert!(text.contains("q/Esc"));
 }
 
 #[test]

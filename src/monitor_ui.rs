@@ -195,11 +195,27 @@ impl MonitorText {
         }
     }
 
-    fn footer(&self) -> &'static str {
-        self.choose(
-            "Tab/Shift+Tab 页面  1:10分钟  2:1小时  3:24小时  4:7天  r:刷新  l:语言  ↑↓:滚动  q:退出",
-            "Tab:page  1:10m  2:1h  3:24h  4:7d  r:refresh  l:language  Up/Down:scroll  q:quit",
-        )
+    fn footer(&self, compact: bool) -> Vec<Line<'static>> {
+        match (self.0, compact) {
+            (Language::Chinese, false) => vec![
+                Line::from("快捷键  Tab/Shift+Tab:切换页面  1:10分钟  2:1小时  3:24小时  4:7天"),
+                Line::from("        r:刷新  l:语言  ↑/↓:滚动  q/Esc:退出"),
+            ],
+            (Language::Chinese, true) => vec![
+                Line::from("快捷键  Tab/Shift+Tab:切换页面"),
+                Line::from("        1:10分钟  2:1小时  3:24小时  4:7天"),
+                Line::from("        r:刷新  l:语言  ↑/↓:滚动  q/Esc:退出"),
+            ],
+            (Language::English, false) => vec![
+                Line::from("Keys  Tab/Shift+Tab:page  1:10m  2:1h  3:24h  4:7d"),
+                Line::from("      r:refresh  l:language  Up/Down:scroll  q/Esc:quit"),
+            ],
+            (Language::English, true) => vec![
+                Line::from("Keys  Tab/Shift+Tab:page"),
+                Line::from("      1:10m  2:1h  3:24h  4:7d"),
+                Line::from("      r:refresh  l:language  Up/Down:scroll  q/Esc:quit"),
+            ],
+        }
     }
 }
 
@@ -217,7 +233,18 @@ fn local_time(timestamp: Option<DateTime<Utc>>) -> String {
 pub fn render(frame: &mut Frame<'_>, app: &MonitorApp) {
     let text = MonitorText(app.language);
     let area = frame.area();
-    if area.width < 60 || area.height < 12 {
+    let warning_height = if app.snapshot.warnings.is_empty()
+        && !app.snapshot.auth_truncated
+        && !app.snapshot.guard_truncated
+    {
+        0
+    } else {
+        3
+    };
+    let footer = text.footer(area.width < 100);
+    let footer_height = footer.len() as u16;
+    let minimum_height = 3 + 3 + warning_height + 5 + footer_height;
+    if area.width < 60 || area.height < minimum_height {
         let message = format!(
             "RdpGuard Monitor\n{} | {} {}\n{}",
             text.page(app.page),
@@ -237,20 +264,12 @@ pub fn render(frame: &mut Frame<'_>, app: &MonitorApp) {
         return;
     }
 
-    let warning_height = if app.snapshot.warnings.is_empty()
-        && !app.snapshot.auth_truncated
-        && !app.snapshot.guard_truncated
-    {
-        0
-    } else {
-        3
-    };
     let chunks = Layout::vertical([
         Constraint::Length(3),
         Constraint::Length(3),
         Constraint::Length(warning_height),
         Constraint::Min(5),
-        Constraint::Length(1),
+        Constraint::Length(footer_height),
     ])
     .split(area);
 
@@ -325,7 +344,7 @@ pub fn render(frame: &mut Frame<'_>, app: &MonitorApp) {
     }
 
     frame.render_widget(
-        Paragraph::new(Line::from(text.footer())).style(Style::default().fg(Color::DarkGray)),
+        Paragraph::new(footer).style(Style::default().fg(Color::DarkGray)),
         chunks[4],
     );
 }
@@ -370,7 +389,7 @@ fn render_overview(
         text.choose("尝试", "Attempts"),
         text.choose("成功", "Success"),
         text.choose("失败", "Failures"),
-        text.choose("防护失败", "Guard fails"),
+        text.choose("RDP 失败", "RDP failures"),
         text.choose("封禁", "Blocked"),
         text.choose("解封时间", "Unblock time"),
         text.choose("最后活动", "Last activity"),
