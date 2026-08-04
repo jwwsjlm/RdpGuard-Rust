@@ -24,12 +24,14 @@ RdpGuard 是一个面向 Windows 的低占用 Rust 服务。它持续读取系�
 
 ## 快速安装
 
-下载并解压发布包后，以管理员身份打开 PowerShell，进入解压目录：
+下载并解压发布包后，打开 PowerShell 并进入解压目录：
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\Install-RdpGuard.ps1
 ```
+
+如果当前窗口不是管理员权限，安装器会自动弹出 Windows UAC 提示。确认后安装会在受信任的系统 PowerShell 中继续；拒绝 UAC 不会修改系统。
 
 安装器会：
 
@@ -211,8 +213,8 @@ git push -u origin main
 发布版本时创建与 Cargo 版本一致的标签，Release 工作流会自动构建并上传附件：
 
 ```powershell
-git tag -a v0.2.1 -m "RdpGuard v0.2.1"
-git push origin v0.2.1
+git tag -a v0.2.2 -m "RdpGuard v0.2.2"
+git push origin v0.2.2
 ```
 
 仓库包含以下自动化维护：

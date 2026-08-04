@@ -11,12 +11,46 @@ $TargetLog = Join-Path $InstallDirectory 'rdpguard.log'
 $SourceExecutable = Join-Path $PSScriptRoot 'rdpguard.exe'
 $SourceConfig = Join-Path $PSScriptRoot 'config.json'
 
-function Assert-Administrator {
+function Test-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
-    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Assert-Administrator {
+    if (-not (Test-Administrator)) {
         throw 'RdpGuard installation requires an elevated PowerShell window.'
     }
+}
+
+function Invoke-SelfElevation {
+    if ([string]::IsNullOrWhiteSpace($PSCommandPath)) {
+        throw 'Cannot determine the installer script path for elevation.'
+    }
+
+    $escapedPath = $PSCommandPath.Replace("'", "''")
+    $command = "& '$escapedPath'"
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+    $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+
+    try {
+        $process = Start-Process -FilePath $windowsPowerShell -Verb RunAs -ArgumentList @(
+            '-NoLogo',
+            '-NoProfile',
+            '-NonInteractive',
+            '-ExecutionPolicy', 'Bypass',
+            '-EncodedCommand', $encodedCommand
+        ) -Wait -PassThru
+    } catch {
+        throw "RdpGuard elevation was cancelled or failed: $($_.Exception.Message)"
+    }
+
+    if ($process.ExitCode -ne 0) {
+        throw "Elevated RdpGuard installation failed with exit code $($process.ExitCode)."
+    }
+
+    Write-Output 'RdpGuard installation completed in an elevated PowerShell process.'
+    exit 0
 }
 
 function Invoke-ServiceControl {
@@ -27,6 +61,9 @@ function Invoke-ServiceControl {
     }
 }
 
+if (-not (Test-Administrator)) {
+    Invoke-SelfElevation
+}
 Assert-Administrator
 if (-not (Test-Path -LiteralPath $SourceExecutable)) {
     throw "Missing release executable: $SourceExecutable"

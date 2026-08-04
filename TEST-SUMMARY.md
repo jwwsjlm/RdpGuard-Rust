@@ -1,4 +1,4 @@
-# RdpGuard v0.2.1 验收摘要
+# RdpGuard v0.2.2 验收摘要
 
 验收日期：2026-08-04
 
@@ -13,12 +13,12 @@
 
 - `cargo fmt --check`：通过。
 - `cargo clippy --all-targets -- -D warnings`：通过，零警告。
-- `cargo test --all-targets`：23 项测试通过，0 失败。
+- `cargo test --all-targets`：24 项测试通过，0 失败。
 - `cargo build --release`：通过。
 - 安装器和卸载器 PowerShell 语法检查：通过。
 - 默认 `config.json` JSON 解析：通过。
 - Windows 本机 Event Log `--dry-run`：通过，未修改防火墙、状态或日志。
-- 发布程序版本：`rdpguard 0.2.1`。
+- 发布程序版本：`rdpguard 0.2.2`。
 
 ## 重点覆盖
 
@@ -33,8 +33,8 @@
 ## 发布文件
 
 - `rdpguard.exe` 大小：604,160 字节。
-- `rdpguard.exe` SHA-256：`C681E201678C9A3A97BA876B9A454205C1D0AE8D532473558F01EC47F348158F`。
+- `rdpguard.exe` SHA-256：`B794F0833552BDDB51621385648A9261A704A697C7612326FDDB5A287893C91F`。
 - Cargo 直接依赖已核对为 2026-08-04 的 crates.io 最新稳定版本。
 - GitHub Actions 工作流已通过最新版 `actionlint` 和 Prettier 检查。
 
-本次仓库整理没有替换或重启当前计算机上已运行的服务。使用 v0.2.1 时，请按 README 的升级步骤重新运行安装器。
+本次仓库整理没有替换或重启当前计算机上已运行的服务。使用 v0.2.2 时，请按 README 的升级步骤重新运行安装器。
