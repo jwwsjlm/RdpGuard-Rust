@@ -56,8 +56,11 @@ jobs:
           retention-days: 14
           path: |
             target/release/rdpguard.exe
+            target/release/rdpguard-monitor.exe
             config.json
             Install-RdpGuard.ps1
             Uninstall-RdpGuard.ps1
             README.md
+            docs/ADVANCED.md
+            CHANGELOG.md
             LICENSE

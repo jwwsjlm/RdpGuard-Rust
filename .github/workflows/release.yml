@@ -60,6 +60,7 @@ jobs:
           New-Item -ItemType Directory -Path $staging -Force | Out-Null
           $files = @(
               'target\release\rdpguard.exe',
+              'target\release\rdpguard-monitor.exe',
               'config.json',
               'Install-RdpGuard.ps1',
               'Uninstall-RdpGuard.ps1',
@@ -71,6 +72,9 @@ jobs:
           foreach ($file in $files) {
               Copy-Item -LiteralPath $file -Destination $staging
           }
+          $stagingDocs = Join-Path $staging 'docs'
+          New-Item -ItemType Directory -Path $stagingDocs -Force | Out-Null
+          Copy-Item -LiteralPath 'docs\ADVANCED.md' -Destination $stagingDocs
 
           $archiveName = "RdpGuard-Rust-$env:GITHUB_REF_NAME.zip"
           $archivePath = Join-Path $env:RUNNER_TEMP $archiveName
