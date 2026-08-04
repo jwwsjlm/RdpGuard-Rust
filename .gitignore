@@ -1,0 +1,7 @@
+/target/
+*.pdb
+*.log
+state.json
+*.tmp
+.DS_Store
+Thumbs.db
