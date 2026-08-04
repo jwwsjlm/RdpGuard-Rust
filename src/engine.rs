@@ -11,11 +11,12 @@ use crate::{
     state::{BlockRecord, State, load_state, save_state_atomic},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunReport {
     pub failures: usize,
     pub blocked: usize,
     pub unblocked: usize,
+    pub applied_actions: Vec<Action>,
 }
 
 pub trait StateStore {
@@ -91,6 +92,7 @@ where
         failures: failures.len(),
         blocked: 0,
         unblocked: 0,
+        applied_actions: Vec::new(),
     };
 
     for action in actions {
@@ -122,6 +124,11 @@ where
                         .context("failed to persist new block; firewall change rolled back");
                 }
                 report.blocked += 1;
+                report.applied_actions.push(Action::Block {
+                    ip,
+                    failures,
+                    expires_at,
+                });
             }
             Action::Unblock { ip } => {
                 firewall
@@ -137,6 +144,7 @@ where
                         .context("failed to persist unblock; firewall change rolled back");
                 }
                 report.unblocked += 1;
+                report.applied_actions.push(Action::Unblock { ip });
             }
         }
     }

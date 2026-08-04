@@ -7,6 +7,7 @@ use rdpguard::{
     engine::{RunReport, StateStore, run_once},
     events::EventSource,
     firewall::{Firewall, FirewallChange},
+    policy::Action,
     state::{BlockRecord, State},
 };
 
@@ -104,7 +105,12 @@ fn fifth_failure_blocks_and_persists() {
         RunReport {
             failures: 5,
             blocked: 1,
-            unblocked: 0
+            unblocked: 0,
+            applied_actions: vec![Action::Block {
+                ip: ip(),
+                failures: 5,
+                expires_at: now + Duration::minutes(360),
+            }],
         }
     );
     assert_eq!(firewall.changes, vec![FirewallChange::Block(ip())]);
@@ -156,7 +162,7 @@ fn expired_rule_is_removed_and_state_is_saved() {
         saves: 0,
     };
 
-    run_once(
+    let report = run_once(
         &mut events,
         &mut firewall,
         &mut store,
@@ -164,7 +170,47 @@ fn expired_rule_is_removed_and_state_is_saved() {
         &Config::default(),
     )
     .unwrap();
+    assert_eq!(report.applied_actions, vec![Action::Unblock { ip: ip() }]);
     assert_eq!(firewall.changes, vec![FirewallChange::Unblock(ip())]);
     assert!(store.state.blocks.is_empty());
     assert_eq!(store.saves, 1);
+}
+
+struct FailingSaveStore {
+    state: State,
+}
+
+impl StateStore for FailingSaveStore {
+    fn load(&self) -> Result<State> {
+        Ok(self.state.clone())
+    }
+
+    fn save(&mut self, _state: &State) -> Result<()> {
+        Err(anyhow!("state save failed"))
+    }
+}
+
+#[test]
+fn failed_state_save_returns_no_action_report_and_rolls_back() {
+    let mut events = FakeEvents(Ok(vec![ip(); 5]));
+    let mut firewall = FakeFirewall::default();
+    let mut store = FailingSaveStore {
+        state: State::default(),
+    };
+    let now = Utc.with_ymd_and_hms(2026, 8, 4, 12, 0, 0).unwrap();
+
+    let result = run_once(
+        &mut events,
+        &mut firewall,
+        &mut store,
+        now,
+        &Config::default(),
+    );
+
+    assert!(result.is_err());
+    assert!(store.state.blocks.is_empty());
+    assert_eq!(
+        firewall.changes,
+        vec![FirewallChange::Block(ip()), FirewallChange::Unblock(ip())]
+    );
 }

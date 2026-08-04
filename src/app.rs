@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use chrono::Utc;
@@ -9,6 +9,7 @@ use crate::{
     events::WindowsEventSource,
     firewall::{DryRunFirewall, FirewallChange, WindowsFirewall},
     logging,
+    policy::Action,
     state::load_state,
 };
 
@@ -63,14 +64,37 @@ pub fn execute_once(paths: &AppPaths, dry_run: bool) -> Result<RunOutcome> {
         }
     };
 
-    if !dry_run {
-        logging::append(
-            &paths.log,
-            &format!(
-                "check complete: failures={}, blocked={}, unblocked={}",
-                outcome.report.failures, outcome.report.blocked, outcome.report.unblocked
-            ),
-        )?;
-    }
+    log_run_report(&paths.log, dry_run, &outcome.report)?;
     Ok(outcome)
+}
+
+pub fn log_run_report(path: &Path, dry_run: bool, report: &RunReport) -> Result<()> {
+    if dry_run {
+        return Ok(());
+    }
+    for action in &report.applied_actions {
+        match action {
+            Action::Block {
+                ip,
+                failures,
+                expires_at,
+            } => logging::append(
+                path,
+                &format!(
+                    "block applied: ip={ip}, failures={failures}, expires_at={}",
+                    expires_at.to_rfc3339()
+                ),
+            )?,
+            Action::Unblock { ip } => {
+                logging::append(path, &format!("unblock applied: ip={ip}"))?;
+            }
+        }
+    }
+    logging::append(
+        path,
+        &format!(
+            "check complete: failures={}, blocked={}, unblocked={}",
+            report.failures, report.blocked, report.unblocked
+        ),
+    )
 }
