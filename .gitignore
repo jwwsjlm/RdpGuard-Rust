@@ -1,4 +1,5 @@
 /target/
+/*.exe
 /.worktrees/
 *.pdb
 *.log

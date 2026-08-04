@@ -1,6 +1,6 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use rdpguard::config::Config;
+use rdpguard::config::{BlockScope, Config};
 use rdpguard::events::{build_query, parse_failed_ips};
 
 #[test]
@@ -135,4 +135,46 @@ fn event_query_uses_id_140_and_requested_window() {
         build_query(10),
         "*[System[(EventID=140) and TimeCreated[timediff(@SystemTime) <= 600000]]]"
     );
+}
+
+#[test]
+fn legacy_config_loads_with_v2_hardening_defaults() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("config.json");
+    std::fs::write(
+        &path,
+        r#"{
+  "check_interval_seconds": 60,
+  "window_minutes": 10,
+  "failure_threshold": 5,
+  "block_minutes": 360,
+  "max_log_size_mb": 10,
+  "log_retention_files": 5,
+  "whitelist": ["203.0.113.8"]
+}"#,
+    )
+    .unwrap();
+
+    let config = Config::load(&path).unwrap();
+    assert_eq!(config.schema_version, 2);
+    assert_eq!(config.block_scope, BlockScope::AllInbound);
+    assert_eq!(config.rdp_port, None);
+    assert_eq!(config.repeat_block_multiplier, 2);
+    assert_eq!(config.max_block_minutes, 10_080);
+    assert_eq!(config.repeat_reset_days, 30);
+    assert_eq!(config.max_active_blocks, 5_000);
+    assert_eq!(config.heartbeat_minutes, 60);
+    assert!(config.is_whitelisted("203.0.113.8".parse().unwrap()));
+}
+
+#[test]
+fn whitelist_accepts_cidr_and_normalizes_mapped_ipv4() {
+    let config: Config =
+        serde_json::from_str(r#"{"whitelist":["198.51.100.0/24","2001:db8::/32","203.0.113.7"]}"#)
+            .unwrap();
+
+    assert!(config.is_whitelisted("198.51.100.42".parse().unwrap()));
+    assert!(config.is_whitelisted("2001:db8::42".parse().unwrap()));
+    assert!(config.is_whitelisted("::ffff:203.0.113.7".parse().unwrap()));
+    assert!(!config.is_whitelisted("198.51.101.1".parse().unwrap()));
 }

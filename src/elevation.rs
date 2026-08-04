@@ -1,9 +1,16 @@
-use std::{ffi::c_void, mem::size_of, os::windows::ffi::OsStrExt, ptr};
+use std::{
+    ffi::{OsStr, c_void},
+    mem::size_of,
+    os::windows::ffi::OsStrExt,
+    path::{Path, PathBuf},
+    ptr,
+};
 
 use anyhow::{Context, Result, bail};
 use windows_sys::Win32::{
     Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0},
     Security::{GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation},
+    System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW},
     System::Threading::{
         GetCurrentProcess, GetExitCodeProcess, INFINITE, OpenProcessToken, WaitForSingleObject,
     },
@@ -50,6 +57,11 @@ pub fn is_elevated() -> Result<bool> {
 
 pub fn relaunch_elevated(language: Language) -> Result<()> {
     let executable = std::env::current_exe().context("failed to locate monitor executable")?;
+    if !is_trusted_monitor_location(&executable)? {
+        bail!(
+            "ELEV001: refusing to elevate a monitor from an unprotected location; run it from C:\\ProgramData\\RdpGuard or start an administrator PowerShell"
+        );
+    }
     let executable: Vec<u16> = executable
         .as_os_str()
         .encode_wide()
@@ -89,4 +101,74 @@ pub fn relaunch_elevated(language: Language) -> Result<()> {
         bail!("elevated monitor failed with exit code {exit_code}");
     }
     Ok(())
+}
+
+pub fn is_trusted_monitor_location_for(executable: &Path, program_data: &Path) -> bool {
+    let expected = program_data.join("RdpGuard").join("rdpguard-monitor.exe");
+    executable
+        .to_string_lossy()
+        .eq_ignore_ascii_case(&expected.to_string_lossy())
+}
+
+fn is_trusted_monitor_location(executable: &Path) -> Result<bool> {
+    let program_data = program_data_path()?;
+    let executable = executable
+        .canonicalize()
+        .context("ELEV001: failed to resolve monitor executable path")?;
+    let program_data = program_data
+        .canonicalize()
+        .context("ELEV001: failed to resolve ProgramData path")?;
+    Ok(is_trusted_monitor_location_for(&executable, &program_data))
+}
+
+fn program_data_path() -> Result<PathBuf> {
+    let subkey: Vec<u16> =
+        OsStr::new(r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders")
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+    let value: Vec<u16> = OsStr::new("Common AppData")
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let mut bytes = 0u32;
+    let first = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            subkey.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_SZ,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut bytes,
+        )
+    };
+    if first != 0 || bytes < 2 {
+        return Err(std::io::Error::from_raw_os_error(first as i32))
+            .context("ELEV001: failed to locate ProgramData in the registry");
+    }
+    let mut buffer = vec![0u16; bytes.div_ceil(2) as usize];
+    let second = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            subkey.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_SZ,
+            ptr::null_mut(),
+            buffer.as_mut_ptr().cast(),
+            &mut bytes,
+        )
+    };
+    if second != 0 {
+        return Err(std::io::Error::from_raw_os_error(second as i32))
+            .context("ELEV001: failed to read ProgramData from the registry");
+    }
+    let length = buffer
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(buffer.len());
+    Ok(PathBuf::from(
+        String::from_utf16(&buffer[..length])
+            .context("ELEV001: ProgramData registry value is not valid UTF-16")?,
+    ))
 }

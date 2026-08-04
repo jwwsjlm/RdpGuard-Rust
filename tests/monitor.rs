@@ -191,6 +191,7 @@ fn state_only_ips_are_blocked_with_expiration() {
                 failures: 5,
             },
         )]),
+        ..State::default()
     };
 
     let summaries = aggregate_ip_summaries(&[], &[], &state);

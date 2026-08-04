@@ -1,5 +1,7 @@
 pub mod app;
 pub mod config;
+pub mod connections;
+pub mod doctor;
 pub mod elevation;
 pub mod engine;
 pub mod events;

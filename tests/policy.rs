@@ -3,7 +3,9 @@ use std::{collections::HashMap, net::IpAddr};
 use chrono::{Duration, TimeZone, Utc};
 use rdpguard::{
     config::Config,
-    policy::{Action, failure_counts, is_public_unicast, plan_actions},
+    policy::{
+        Action, block_duration, failure_counts, is_public_unicast, normalize_ip, plan_actions,
+    },
 };
 
 fn ip(value: &str) -> IpAddr {
@@ -60,7 +62,9 @@ fn whitelist_and_active_blocks_are_not_blocked_again() {
     let counts = failure_counts([attacker; 5]);
 
     let mut whitelisted = Config::default();
-    whitelisted.whitelist.push(attacker);
+    whitelisted
+        .whitelist
+        .push(attacker.to_string().parse().unwrap());
     assert!(plan_actions(now, &counts, &HashMap::new(), &whitelisted).is_empty());
 
     let active = HashMap::from([(attacker, now + Duration::minutes(1))]);
@@ -75,5 +79,39 @@ fn expired_block_is_unblocked_before_new_decisions() {
     assert_eq!(
         plan_actions(now, &HashMap::new(), &active, &Config::default()),
         vec![Action::Unblock { ip: attacker }]
+    );
+}
+
+#[test]
+fn mapped_ipv4_addresses_share_the_same_counter() {
+    let native = ip("203.0.113.9");
+    let mapped = ip("::ffff:203.0.113.9");
+    assert_eq!(normalize_ip(mapped), native);
+    assert_eq!(failure_counts([native, mapped])[&native], 2);
+}
+
+#[test]
+fn repeat_blocks_double_until_the_seven_day_cap() {
+    let config = Config::default();
+    let expected = [360, 720, 1_440, 2_880, 5_760, 10_080, 10_080];
+    for (index, minutes) in expected.into_iter().enumerate() {
+        assert_eq!(
+            block_duration(&config, index as u32 + 1),
+            Duration::minutes(minutes)
+        );
+    }
+}
+
+#[test]
+fn a_repeat_after_thirty_quiet_days_resets_to_six_hours() {
+    let config = Config::default();
+    let now = Utc.with_ymd_and_hms(2026, 8, 4, 12, 0, 0).unwrap();
+    assert_eq!(
+        rdpguard::policy::next_repeat_count(
+            now,
+            Some((9, now - Duration::days(30) - Duration::seconds(1))),
+            &config,
+        ),
+        1
     );
 }

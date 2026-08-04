@@ -16,6 +16,16 @@ pub enum Action {
     },
 }
 
+pub fn normalize_ip(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(ip) => ip
+            .to_ipv4_mapped()
+            .map(IpAddr::V4)
+            .unwrap_or(IpAddr::V6(ip)),
+        ip => ip,
+    }
+}
+
 pub fn is_public_unicast(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => {
@@ -46,9 +56,35 @@ where
 {
     let mut counts = HashMap::new();
     for ip in ips {
-        *counts.entry(ip).or_insert(0) += 1;
+        *counts.entry(normalize_ip(ip)).or_insert(0) += 1;
     }
     counts
+}
+
+pub fn next_repeat_count(
+    now: DateTime<Utc>,
+    previous: Option<(u32, DateTime<Utc>)>,
+    config: &Config,
+) -> u32 {
+    match previous {
+        Some((count, last))
+            if now.signed_duration_since(last)
+                <= Duration::days(config.repeat_reset_days as i64) =>
+        {
+            count.saturating_add(1)
+        }
+        _ => 1,
+    }
+}
+
+pub fn block_duration(config: &Config, repeat_count: u32) -> Duration {
+    let exponent = repeat_count.saturating_sub(1).min(31);
+    let multiplier = u64::from(config.repeat_block_multiplier).saturating_pow(exponent);
+    let minutes = config
+        .block_minutes
+        .saturating_mul(multiplier)
+        .min(config.max_block_minutes);
+    Duration::minutes(minutes.min(i64::MAX as u64) as i64)
 }
 
 pub fn plan_actions(
@@ -72,7 +108,7 @@ pub fn plan_actions(
     for (&ip, &failures) in counted_ips {
         if failures < config.failure_threshold
             || !is_public_unicast(ip)
-            || config.whitelist.contains(&ip)
+            || config.is_whitelisted(ip)
             || active.contains_key(&ip)
         {
             continue;

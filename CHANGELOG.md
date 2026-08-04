@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 - 2026-08-05
+
+- 防火墙规则与状态自动对账：重建缺失规则、替换错误范围/端口、清理到期/白名单/孤立规则；状态损坏时隔离并从规则元数据恢复。
+- 新增 CIDR、IPv4-mapped IPv6 规范化、5000 条容量保护，以及 6 小时起步、2 倍递增、最长 7 天、30 天重置的复犯策略。
+- 支持 `all_inbound` 和仅实际 RDP TCP/UDP 端口的 `rdp_only`，默认从注册表读取端口。
+- 新增只读 `rdpguard doctor` 文本/JSON 诊断和在线菜单 `[4]`，错误统一使用稳定代码与修复建议。
+- 服务首次健康检查完成后才报告 Running；日志改为动作/错误即时记录、相同错误抑制和每小时心跳。
+- 在线流程先 UAC，再在受保护 ProgramData 暂存区下载校验；本地安装器不再从用户可写目录自提权。
+- 升级保留服务对象并执行预检、备份、替换、真实就绪等待和完整回滚。
+- 发布 x64、ARM64、x86 静态 CRT 包，增加 PowerShell 5.1、cargo audit/deny、CodeQL、Actionlint、SBOM、SHA-256 与 GitHub build provenance。
+- 源码仓库移除旧的 0.3.1 EXE 构建产物。
+
 ## 0.3.7 - 2026-08-05
 
 - 修复 UAC 提权后的交互式配置向导被错误地以 `-NonInteractive` 启动、导致 `Read-Host` 失败的问题。

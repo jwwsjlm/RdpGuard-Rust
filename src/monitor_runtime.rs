@@ -13,6 +13,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use crate::{
     app::AppPaths,
     events::{EventQueryResult, query_recent_auth_events, query_recent_guard_failures},
+    firewall::{Firewall, ManagedRule, WindowsFirewall},
     language::Language,
     monitor::{
         AuthEvent, GuardFailureEvent, MonitorSnapshot, MonitorWarning, MonitorWarningKind,
@@ -26,6 +27,9 @@ pub trait MonitorSources {
     fn auth_events(&mut self, window_minutes: u64) -> Result<EventQueryResult<AuthEvent>>;
     fn guard_events(&mut self, window_minutes: u64) -> Result<EventQueryResult<GuardFailureEvent>>;
     fn state(&mut self) -> Result<State>;
+    fn firewall_rules(&mut self) -> Result<Option<Vec<ManagedRule>>> {
+        Ok(None)
+    }
 }
 
 #[derive(Default)]
@@ -44,6 +48,11 @@ impl MonitorSources for WindowsMonitorSources {
 
     fn state(&mut self) -> Result<State> {
         load_state(&self.paths.state)
+    }
+
+    fn firewall_rules(&mut self) -> Result<Option<Vec<ManagedRule>>> {
+        let mut firewall = WindowsFirewall::new()?;
+        firewall.managed_rules()
     }
 }
 
@@ -87,7 +96,42 @@ pub fn collect_snapshot<S: MonitorSources>(
             State::default()
         }
     };
-    let summaries = aggregate_ip_summaries(&auth_events, &guard_events, &state);
+    let firewall_rules = match sources.firewall_rules() {
+        Ok(rules) => rules,
+        Err(error) => {
+            warnings.push(MonitorWarning {
+                kind: MonitorWarningKind::Firewall,
+                detail: format!("{error:#}"),
+            });
+            None
+        }
+    };
+    let mut summaries = aggregate_ip_summaries(&auth_events, &guard_events, &state);
+    if let Some(rules) = firewall_rules {
+        let actual: std::collections::HashMap<_, _> =
+            rules.into_iter().map(|rule| (rule.ip, rule)).collect();
+        let missing = state
+            .blocks
+            .keys()
+            .filter(|ip| !actual.contains_key(ip))
+            .count();
+        let orphaned = actual
+            .keys()
+            .filter(|ip| !state.blocks.contains_key(ip))
+            .count();
+        for summary in &mut summaries {
+            summary.blocked = actual.contains_key(&summary.ip);
+            summary.expires_at = actual.get(&summary.ip).map(|rule| rule.expires_at);
+        }
+        if missing > 0 || orphaned > 0 {
+            warnings.push(MonitorWarning {
+                kind: MonitorWarningKind::Firewall,
+                detail: format!(
+                    "firewall reconciliation pending: missing={missing}, orphaned={orphaned}"
+                ),
+            });
+        }
+    }
 
     MonitorSnapshot {
         summaries,

@@ -2,36 +2,9 @@ const INSTALLER: &str = include_str!("../Install-RdpGuard.ps1");
 const UNINSTALLER: &str = include_str!("../Uninstall-RdpGuard.ps1");
 
 #[test]
-fn non_admin_install_self_elevates_via_uac() {
-    for required in [
-        "$PSCommandPath",
-        "WindowsPowerShell\\v1.0\\powershell.exe",
-        "-EncodedCommand",
-        "-Verb RunAs",
-        "-Wait",
-        "-PassThru",
-        ".ExitCode",
-    ] {
-        assert!(
-            INSTALLER.contains(required),
-            "installer is missing self-elevation element: {required}"
-        );
-    }
-}
-
-#[test]
-fn interactive_uac_install_allows_prompts_and_reports_child_errors() {
-    for required in [
-        "New-ElevatedPowerShellArguments",
-        "if ($UseNonInteractive) { $arguments += '-NonInteractive' }",
-        "RdpGuard-install-",
-        "[IO.File]::ReadAllText($errorPath)",
-    ] {
-        assert!(
-            INSTALLER.contains(required),
-            "installer is missing interactive elevation safety: {required}"
-        );
-    }
+fn local_installer_refuses_to_execute_from_a_user_writable_path_via_self_elevation() {
+    assert!(INSTALLER.contains("requires an elevated PowerShell window"));
+    assert!(!INSTALLER.contains("Invoke-SelfElevation -ResolvedLanguage $ResolvedLanguage"));
 }
 
 #[test]
@@ -59,13 +32,19 @@ fn installer_supports_bilingual_interactive_and_noninteractive_configuration() {
 }
 
 #[test]
-fn installer_rolls_back_configuration_when_service_installation_fails() {
+fn installer_rolls_back_binaries_and_configuration_when_upgrade_fails() {
     for required in [
         "$PendingConfig",
         "$BackupConfig",
-        "Move-Item -LiteralPath $TargetConfig -Destination $BackupConfig",
-        "Move-Item -LiteralPath $PendingConfig -Destination $TargetConfig",
-        "Restore-PreviousConfig",
+        "$BackupExecutable",
+        "$BackupMonitor",
+        "$PreflightState",
+        "Previous installation was restored",
+        "Restore-ServiceConfiguration",
+        "Set-ProtectedInstallDirectory",
+        "ReparsePoint",
+        "sc.exe",
+        "'config', $ServiceName",
     ] {
         assert!(
             INSTALLER.contains(required),
@@ -80,7 +59,7 @@ fn installer_copies_the_read_only_monitor() {
         "$SourceMonitor",
         "$TargetMonitor",
         "rdpguard-monitor.exe",
-        "Copy-Item -LiteralPath $SourceMonitor -Destination $TargetMonitor -Force",
+        "Copy-Item -LiteralPath $SourceMonitor -Destination $PendingMonitor -Force",
     ] {
         assert!(
             INSTALLER.contains(required),

@@ -1,9 +1,13 @@
 [CmdletBinding()]
-param([switch]$LibraryMode)
+param(
+    [switch]$LibraryMode,
+    [ValidateSet('', 'install', 'monitor', 'doctor')][string]$ElevatedAction = '',
+    [ValidateSet('auto', 'zh-CN', 'en-US')][string]$Language = 'auto'
+)
 
 $ErrorActionPreference = 'Stop'
 $Repository = 'jwwsjlm/RdpGuard-Rust'
-$ReleaseTag = 'v0.3.7'
+$ReleaseTag = 'v0.4.0'
 
 function ConvertFrom-OnlineUtf8Base64 {
     param([Parameter(Mandatory)][string]$Value)
@@ -30,18 +34,31 @@ function Get-OnlineText {
         Install = @((ConvertFrom-OnlineUtf8Base64 'WzFdIOWuieijheaIlumFjee9rumYsuaKpOacjeWKoQ=='), '[1] Install or configure protection service')
         History = @((ConvertFrom-OnlineUtf8Base64 'WzJdIOafpeeci+WOhuWPsueZu+W9leaXpeW/lw=='), '[2] View historical login logs')
         Language = @('[3] English', (ConvertFrom-OnlineUtf8Base64 'WzNdIOS4reaWhw=='))
+        Doctor = @((ConvertFrom-OnlineUtf8Base64 'WzRdIOi/kOihjOiviuWIsA=='), '[4] Run diagnostics')
         Exit = @((ConvertFrom-OnlineUtf8Base64 'WzBdIOmAgOWHug=='), '[0] Exit')
         Choice = @((ConvertFrom-OnlineUtf8Base64 '6K+36YCJ5oup'), 'Select an option')
-        InvalidChoice = @((ConvertFrom-OnlineUtf8Base64 '5peg5pWI6YCJ6aG577yM6K+36L6T5YWlIDDjgIEx44CBMiDmiJYgM+OAgg=='), 'Invalid option. Enter 0, 1, 2 or 3.')
+        InvalidChoice = @((ConvertFrom-OnlineUtf8Base64 '5peg5pWI6YCJ6aG577yM6K+36L6T5YWlIDDjgIEK44CBMuOAgTPmiJYgNOOAgg=='), 'Invalid option. Enter 0, 1, 2, 3 or 4.')
         Downloading = @((ConvertFrom-OnlineUtf8Base64 '5q2j5Zyo5LiL6L295bm25qCh6aqM5pyA5paw5q2j5byP54mILi4u'), 'Downloading and verifying the latest stable release...')
         Ready = @((ConvertFrom-OnlineUtf8Base64 '5Y+R5biD5YyF5qCh6aqM6YCa6L+H44CC'), 'Release package verification passed.')
         OperationFailed = @((ConvertFrom-OnlineUtf8Base64 '5pON5L2c5aSx6LSl'), 'Operation failed')
         InstallFailed = @((ConvertFrom-OnlineUtf8Base64 '5a6J6KOF5Zmo6L+U5Zue5aSx6LSl54q25oCB'), 'Installer returned a failure status')
         MonitorFailed = @((ConvertFrom-OnlineUtf8Base64 '5Y6G5Y+y5pel5b+X55uR5o6n5Zmo6L+U5Zue5aSx6LSl54q25oCB'), 'History monitor returned a failure status')
+        DoctorFailed = @((ConvertFrom-OnlineUtf8Base64 '6K+K5pat5Y+R546w6ZyA6KaB5aSE55CG55qE'), 'Diagnostics found items that need attention')
+        ElevationFailed = @((ConvertFrom-OnlineUtf8Base64 '566h55CG5ZGY5p2D6ZmQ6K+35rGC5aSx6LSl5oiW5Y+W5raI'), 'Administrator elevation failed or was cancelled')
     }
     if (-not $messages.ContainsKey($Key)) { throw "Unknown message key: $Key" }
     if ($Language -eq 'zh-CN') { return $messages[$Key][0] }
     return $messages[$Key][1]
+}
+
+function Get-NativeRdpGuardArchitecture {
+    $architecture = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+    switch ($architecture.ToUpperInvariant()) {
+        'AMD64' { return 'x64' }
+        'ARM64' { return 'arm64' }
+        'X86' { return 'x86' }
+        default { throw "Unsupported native Windows architecture: $architecture" }
+    }
 }
 
 function Get-ExpectedArchiveHash {
@@ -82,9 +99,11 @@ function Remove-TemporaryBundle {
     if ([string]::IsNullOrWhiteSpace($TemporaryDirectory) -or -not (Test-Path -LiteralPath $TemporaryDirectory)) { return }
 
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    $protectedRoot = [IO.Path]::GetFullPath((Join-Path $env:ProgramData 'RdpGuard\Staging')).TrimEnd('\') + '\'
     $candidate = [IO.Path]::GetFullPath($TemporaryDirectory)
     $leaf = Split-Path -Leaf $candidate
-    if (-not $candidate.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -or -not $leaf.StartsWith('RdpGuard-', [StringComparison]::Ordinal)) {
+    $allowedRoot = $candidate.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -or $candidate.StartsWith($protectedRoot, [StringComparison]::OrdinalIgnoreCase)
+    if (-not $allowedRoot -or -not $leaf.StartsWith('RdpGuard-', [StringComparison]::Ordinal)) {
         throw "Refusing to remove unexpected temporary path: $candidate"
     }
     Remove-Item -LiteralPath $candidate -Recurse -Force
@@ -99,16 +118,19 @@ function Invoke-WithTemporaryCleanup {
 }
 
 function Get-VerifiedReleaseBundle {
+    param([AllowNull()][string]$BaseDirectory)
     $tempDirectory = $null
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
         if ($ReleaseTag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'The launcher contains an invalid release tag.' }
         $headers = @{ 'User-Agent' = 'RdpGuard-Online-Installer' }
-        $archiveName = "RdpGuard-Rust-$ReleaseTag.zip"
+        $architecture = Get-NativeRdpGuardArchitecture
+        $archiveName = "RdpGuard-Rust-$ReleaseTag-windows-$architecture.zip"
         $releaseBase = "https://github.com/$Repository/releases/download/$ReleaseTag"
         $archiveUri = Assert-SafeDownloadUri "$releaseBase/$archiveName"
         $checksumUri = Assert-SafeDownloadUri "$releaseBase/SHA256SUMS.txt"
-        $tempDirectory = Join-Path ([IO.Path]::GetTempPath()) "RdpGuard-$([Guid]::NewGuid().ToString('N'))"
+        $rootDirectory = if ([string]::IsNullOrWhiteSpace($BaseDirectory)) { [IO.Path]::GetTempPath() } else { $BaseDirectory }
+        $tempDirectory = Join-Path $rootDirectory "RdpGuard-$([Guid]::NewGuid().ToString('N'))"
         $archivePath = Join-Path $tempDirectory $archiveName
         $checksumPath = Join-Path $tempDirectory 'SHA256SUMS.txt'
         $extractPath = Join-Path $tempDirectory 'extracted'
@@ -136,82 +158,146 @@ function Get-VerifiedReleaseBundle {
     }
 }
 
+function Test-OnlineAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Set-ProtectedOnlineDirectory {
+    param([Parameter(Mandatory)][string]$Path)
+    if (Test-Path -LiteralPath $Path) {
+        $item = Get-Item -LiteralPath $Path -Force
+        if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw "UPGRADE001: Refusing unsafe protected directory: $Path"
+        }
+    } else {
+        New-Item -ItemType Directory -Path $Path | Out-Null
+    }
+
+    $administrators = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
+    $system = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+    $inheritance = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+    $propagation = [Security.AccessControl.PropagationFlags]::None
+    $allow = [Security.AccessControl.AccessControlType]::Allow
+    $fullControl = [Security.AccessControl.FileSystemRights]::FullControl
+    $security = [Security.AccessControl.DirectorySecurity]::new()
+    $security.SetAccessRuleProtection($true, $false)
+    $security.SetOwner($administrators)
+    $security.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($system, $fullControl, $inheritance, $propagation, $allow))
+    $security.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($administrators, $fullControl, $inheritance, $propagation, $allow))
+    Set-Acl -LiteralPath $Path -AclObject $security
+}
+
+function Invoke-ProtectedOnlineAction {
+    param(
+        [Parameter(Mandatory)][ValidateSet('install', 'monitor', 'doctor')][string]$Action,
+        [Parameter(Mandatory)][ValidateSet('zh-CN', 'en-US')][string]$SelectedLanguage
+    )
+    if (-not (Test-OnlineAdministrator)) { throw 'Protected online action requires administrator rights.' }
+    $installRoot = Join-Path $env:ProgramData 'RdpGuard'
+    $stagingRoot = Join-Path $installRoot 'Staging'
+    Set-ProtectedOnlineDirectory $installRoot
+    Set-ProtectedOnlineDirectory $stagingRoot
+    $bundle = $null
+    try {
+        Write-Host (Get-OnlineText $SelectedLanguage Downloading) -ForegroundColor Cyan
+        $bundle = Get-VerifiedReleaseBundle -BaseDirectory $stagingRoot
+        Write-Host (Get-OnlineText $SelectedLanguage Ready) -ForegroundColor Green
+        switch ($Action) {
+            'install' {
+                & (Join-Path $bundle.Root 'Install-RdpGuard.ps1') -Language $SelectedLanguage
+                if ($LASTEXITCODE -ne 0) { throw "$(Get-OnlineText $SelectedLanguage InstallFailed): $LASTEXITCODE" }
+            }
+            'monitor' {
+                & (Join-Path $bundle.Root 'rdpguard-monitor.exe') --language $SelectedLanguage
+                if ($LASTEXITCODE -ne 0) { throw "$(Get-OnlineText $SelectedLanguage MonitorFailed): $LASTEXITCODE" }
+            }
+            'doctor' {
+                $diagnostic = Join-Path $env:ProgramData 'RdpGuard\rdpguard.exe'
+                if (-not (Test-Path -LiteralPath $diagnostic)) { $diagnostic = Join-Path $bundle.Root 'rdpguard.exe' }
+                & $diagnostic doctor --language $SelectedLanguage
+                if ($LASTEXITCODE -eq 2) { throw "$(Get-OnlineText $SelectedLanguage DoctorFailed): invalid arguments" }
+            }
+        }
+    } finally {
+        if ($null -ne $bundle -and (Test-Path -LiteralPath $bundle.TempDirectory)) {
+            Remove-TemporaryBundle $bundle.TempDirectory
+        }
+    }
+}
+
+function Invoke-ElevatedOnlineAction {
+    param(
+        [Parameter(Mandatory)][ValidateSet('install', 'monitor', 'doctor')][string]$Action,
+        [Parameter(Mandatory)][ValidateSet('zh-CN', 'en-US')][string]$SelectedLanguage
+    )
+    if (Test-OnlineAdministrator) {
+        Invoke-ProtectedOnlineAction $Action $SelectedLanguage
+        return
+    }
+    $launcherUri = "https://raw.githubusercontent.com/$Repository/$ReleaseTag/Install-RdpGuard-Online.ps1"
+    $command = @"
+`$ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+`$source = Invoke-RestMethod -UseBasicParsing -Uri '$launcherUri' -Headers @{ 'User-Agent' = 'RdpGuard-Online-Installer' }
+& ([ScriptBlock]::Create([string]`$source)) -ElevatedAction '$Action' -Language '$SelectedLanguage'
+"@
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+    $powerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    try {
+        $process = Start-Process -FilePath $powerShell -Verb RunAs -ArgumentList @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded) -Wait -PassThru
+    } catch {
+        throw "$(Get-OnlineText $SelectedLanguage ElevationFailed): $($_.Exception.Message)"
+    }
+    if ($process.ExitCode -ne 0) { throw "$(Get-OnlineText $SelectedLanguage OperationFailed): exit code $($process.ExitCode)" }
+}
+
 function Invoke-RdpGuardMenuChoice {
     param(
         [Parameter(Mandatory)][string]$Choice,
         [Parameter(Mandatory)][ValidateSet('zh-CN', 'en-US')][string]$Language,
-        [AllowNull()]$Bundle,
-        [Parameter(Mandatory)][scriptblock]$BundleProvider,
-        [Parameter(Mandatory)][scriptblock]$InstallAction,
-        [Parameter(Mandatory)][scriptblock]$MonitorAction
+        [Parameter(Mandatory)][scriptblock]$ActionInvoker
     )
-
-    $result = [ordered]@{ Exit = $false; Valid = $true; Language = $Language; Bundle = $Bundle }
+    $result = [ordered]@{ Exit = $false; Valid = $true; Language = $Language }
     switch ($Choice.Trim()) {
         '0' { $result.Exit = $true }
+        '1' { & $ActionInvoker 'install' $Language }
+        '2' { & $ActionInvoker 'monitor' $Language }
         '3' { $result.Language = if ($Language -eq 'zh-CN') { 'en-US' } else { 'zh-CN' } }
-        '1' {
-            if ($null -eq $result.Bundle) {
-                Write-Host (Get-OnlineText $Language Downloading) -ForegroundColor Cyan
-                $result.Bundle = & $BundleProvider
-                Write-Host (Get-OnlineText $Language Ready) -ForegroundColor Green
-            }
-            & $InstallAction $result.Bundle $result.Language | ForEach-Object { Write-Host $_ }
-        }
-        '2' {
-            if ($null -eq $result.Bundle) {
-                Write-Host (Get-OnlineText $Language Downloading) -ForegroundColor Cyan
-                $result.Bundle = & $BundleProvider
-                Write-Host (Get-OnlineText $Language Ready) -ForegroundColor Green
-            }
-            & $MonitorAction $result.Bundle $result.Language | ForEach-Object { Write-Host $_ }
-        }
+        '4' { & $ActionInvoker 'doctor' $Language }
         default { $result.Valid = $false }
     }
     return [pscustomobject]$result
 }
 
 function Invoke-OnlineLauncher {
-    $language = Resolve-RdpGuardLanguage -Language auto -UiCulture $PSUICulture
-    $bundle = $null
-    $bundleProvider = { Get-VerifiedReleaseBundle }
-    $installAction = {
-        param($VerifiedBundle, $SelectedLanguage)
-        $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-        $installer = Join-Path $VerifiedBundle.Root 'Install-RdpGuard.ps1'
-        & $windowsPowerShell -NoLogo -NoProfile -ExecutionPolicy Bypass -File $installer -Language $SelectedLanguage
-        if ($LASTEXITCODE -ne 0) { throw "$(Get-OnlineText $SelectedLanguage InstallFailed): $LASTEXITCODE" }
-    }
-    $monitorAction = {
-        param($VerifiedBundle, $SelectedLanguage)
-        $monitor = Join-Path $VerifiedBundle.Root 'rdpguard-monitor.exe'
-        & $monitor --language $SelectedLanguage
-        if ($LASTEXITCODE -ne 0) { throw "$(Get-OnlineText $SelectedLanguage MonitorFailed): $LASTEXITCODE" }
-    }
-
-    try {
-        while ($true) {
-            Write-Host ''
-            Write-Host (Get-OnlineText $language Title) -ForegroundColor Cyan
-            Write-Host (Get-OnlineText $language Install)
-            Write-Host (Get-OnlineText $language History)
-            Write-Host (Get-OnlineText $language Language)
-            Write-Host (Get-OnlineText $language Exit)
-            $choice = Read-Host (Get-OnlineText $language Choice)
-            try {
-                $result = Invoke-RdpGuardMenuChoice $choice $language $bundle $bundleProvider $installAction $monitorAction
-                $language = $result.Language
-                $bundle = $result.Bundle
-                if (-not $result.Valid) { Write-Host (Get-OnlineText $language InvalidChoice) -ForegroundColor Yellow }
-                if ($result.Exit) { break }
-            } catch {
-                Write-Host "$(Get-OnlineText $language OperationFailed): $($_.Exception.Message)" -ForegroundColor Red
-            }
+    $language = Resolve-RdpGuardLanguage -Language $Language -UiCulture $PSUICulture
+    $actionInvoker = { param($Action, $SelectedLanguage) Invoke-ElevatedOnlineAction $Action $SelectedLanguage }
+    while ($true) {
+        Write-Host ''
+        Write-Host (Get-OnlineText $language Title) -ForegroundColor Cyan
+        Write-Host (Get-OnlineText $language Install)
+        Write-Host (Get-OnlineText $language History)
+        Write-Host (Get-OnlineText $language Language)
+        Write-Host (Get-OnlineText $language Doctor)
+        Write-Host (Get-OnlineText $language Exit)
+        $choice = Read-Host (Get-OnlineText $language Choice)
+        try {
+            $result = Invoke-RdpGuardMenuChoice $choice $language $actionInvoker
+            $language = $result.Language
+            if (-not $result.Valid) { Write-Host (Get-OnlineText $language InvalidChoice) -ForegroundColor Yellow }
+            if ($result.Exit) { break }
+        } catch {
+            Write-Host "$(Get-OnlineText $language OperationFailed): $($_.Exception.Message)" -ForegroundColor Red
         }
-    } finally {
-        if ($null -ne $bundle) { Remove-TemporaryBundle $bundle.TempDirectory }
     }
 }
 
 if ($LibraryMode) { return }
+$resolved = Resolve-RdpGuardLanguage -Language $Language -UiCulture $PSUICulture
+if ($ElevatedAction) {
+    Invoke-ProtectedOnlineAction $ElevatedAction $resolved
+    return
+}
 Invoke-OnlineLauncher

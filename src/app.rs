@@ -4,10 +4,10 @@ use anyhow::Result;
 use chrono::Utc;
 
 use crate::{
-    config::Config,
-    engine::{FileStateStore, MemoryStateStore, RunReport, run_once, run_once_observed},
+    config::{BlockScope, Config},
+    engine::{FileStateStore, MemoryStateStore, RunReport, run_once_observed},
     events::WindowsEventSource,
-    firewall::{DryRunFirewall, FirewallChange, WindowsFirewall},
+    firewall::{DryRunFirewall, FirewallChange, WindowsFirewall, detect_rdp_port},
     logging::{self, RotationPolicy},
     policy::Action,
     state::load_state,
@@ -39,7 +39,10 @@ pub struct RunOutcome {
 }
 
 pub fn execute_once(paths: &AppPaths, dry_run: bool) -> Result<RunOutcome> {
-    let config = Config::load(&paths.config)?;
+    let mut config = Config::load(&paths.config)?;
+    if config.block_scope == BlockScope::RdpOnly && config.rdp_port.is_none() {
+        config.rdp_port = Some(detect_rdp_port()?);
+    }
     let log_policy =
         RotationPolicy::from_megabytes(config.max_log_size_mb, config.log_retention_files);
     let mut events = WindowsEventSource;
@@ -55,7 +58,7 @@ pub fn execute_once(paths: &AppPaths, dry_run: bool) -> Result<RunOutcome> {
             &mut store,
             now,
             &config,
-            |action| log_applied_action(&paths.log, action, log_policy),
+            |_action| Ok(()),
         )?;
         RunOutcome {
             report,
@@ -65,7 +68,14 @@ pub fn execute_once(paths: &AppPaths, dry_run: bool) -> Result<RunOutcome> {
     } else {
         let mut store = FileStateStore::new(paths.state.clone());
         let mut firewall = WindowsFirewall::new()?;
-        let report = run_once(&mut events, &mut firewall, &mut store, now, &config)?;
+        let report = run_once_observed(
+            &mut events,
+            &mut firewall,
+            &mut store,
+            now,
+            &config,
+            |action| log_applied_action(&paths.log, action, log_policy),
+        )?;
         RunOutcome {
             report,
             planned_changes: Vec::new(),
@@ -73,9 +83,6 @@ pub fn execute_once(paths: &AppPaths, dry_run: bool) -> Result<RunOutcome> {
         }
     };
 
-    if !dry_run {
-        log_run_summary(&paths.log, &outcome.report, log_policy)?;
-    }
     Ok(outcome)
 }
 
@@ -114,8 +121,12 @@ fn log_run_summary(path: &Path, report: &RunReport, policy: RotationPolicy) -> R
     logging::append_with_policy(
         path,
         &format!(
-            "check complete: failures={}, blocked={}, unblocked={}",
-            report.failures, report.blocked, report.unblocked
+            "health heartbeat: failures={}, active_actions={}, repaired={}, orphans_removed={}, warnings={}",
+            report.failures,
+            report.blocked + report.unblocked,
+            report.repaired,
+            report.orphans_removed,
+            report.warnings.len()
         ),
         policy,
     )

@@ -41,6 +41,7 @@ pub enum MonitorWarningKind {
     AuthLog,
     GuardLog,
     BlockState,
+    Firewall,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

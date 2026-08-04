@@ -4,21 +4,31 @@ use anyhow::{Context, Result};
 use rdpguard::{
     VERSION,
     app::{AppPaths, execute_once},
+    doctor,
+    language::Language,
     service,
 };
 
 const HELP: &str = "RdpGuard - temporary blocking for repeated RDP failures\n\n\
-Usage:\n  rdpguard --service\n  rdpguard --once [path options]\n  rdpguard --dry-run [path options]\n  rdpguard --version\n\n\
+Usage:\n  rdpguard --service\n  rdpguard --once [path options]\n  rdpguard --dry-run [path options]\n  rdpguard doctor [--json] [--language zh-CN|en-US] [path options]\n  rdpguard --version\n\n\
 Path options:\n  --config <file>  Configuration JSON\n  --state <file>   Persistent block state JSON\n  --log <file>     Operational log\n";
 
 enum Mode {
     Service,
-    Once { dry_run: bool, paths: AppPaths },
+    Once {
+        dry_run: bool,
+        paths: AppPaths,
+    },
+    Doctor {
+        json: bool,
+        language: Language,
+        paths: AppPaths,
+    },
 }
 
 fn main() -> ExitCode {
     match real_main() {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => ExitCode::from(code),
         Err(error) => {
             eprintln!("rdpguard: {error:#}");
             if error.downcast_ref::<UsageError>().is_some() {
@@ -30,21 +40,24 @@ fn main() -> ExitCode {
     }
 }
 
-fn real_main() -> Result<()> {
+fn real_main() -> Result<u8> {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     if arguments == ["--help"] {
         print!("{HELP}");
-        return Ok(());
+        return Ok(0);
     }
     if arguments == ["--version"] {
         println!("rdpguard {VERSION}");
-        return Ok(());
+        return Ok(0);
     }
     let mode = parse_mode(&arguments).inspect_err(|_error| {
         eprintln!("unknown argument or invalid usage\n\n{HELP}");
     })?;
     match mode {
-        Mode::Service => service::run_dispatcher().context("service dispatcher failed"),
+        Mode::Service => {
+            service::run_dispatcher().context("service dispatcher failed")?;
+            Ok(0)
+        }
         Mode::Once { dry_run, paths } => {
             let outcome = execute_once(&paths, dry_run)?;
             println!(
@@ -54,7 +67,20 @@ fn real_main() -> Result<()> {
             for change in outcome.planned_changes {
                 println!("dry-run: {change:?}");
             }
-            Ok(())
+            Ok(0)
+        }
+        Mode::Doctor {
+            json,
+            language,
+            paths,
+        } => {
+            let report = doctor::run(&paths, language);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                print!("{}", report.render_text(language));
+            }
+            Ok(report.exit_code())
         }
     }
 }
@@ -76,6 +102,43 @@ fn parse_mode(arguments: &[String]) -> std::result::Result<Mode, UsageError> {
     };
     if first == "--service" && arguments.len() == 1 {
         return Ok(Mode::Service);
+    }
+    if first == "doctor" {
+        let mut json = false;
+        let mut language = Language::detect();
+        let mut paths = AppPaths::default();
+        let mut index = 1;
+        while index < arguments.len() {
+            match arguments[index].as_str() {
+                "--json" => {
+                    json = true;
+                    index += 1;
+                }
+                "--language" | "--config" | "--state" | "--log" => {
+                    let option = arguments[index].as_str();
+                    let value = arguments
+                        .get(index + 1)
+                        .ok_or_else(|| UsageError(format!("{option} requires a value")))?;
+                    match option {
+                        "--language" => {
+                            language = Language::parse_cli(value)
+                                .map_err(|error| UsageError(error.to_string()))?
+                        }
+                        "--config" => paths.config = PathBuf::from(value),
+                        "--state" => paths.state = PathBuf::from(value),
+                        "--log" => paths.log = PathBuf::from(value),
+                        _ => unreachable!(),
+                    }
+                    index += 2;
+                }
+                other => return Err(UsageError(format!("unknown doctor argument: {other}"))),
+            }
+        }
+        return Ok(Mode::Doctor {
+            json,
+            language,
+            paths,
+        });
     }
     let dry_run = match first.as_str() {
         "--once" => false,

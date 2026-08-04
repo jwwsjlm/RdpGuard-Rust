@@ -192,6 +192,9 @@ impl MonitorText {
             MonitorWarningKind::BlockState => {
                 self.choose("封禁状态读取失败", "Failed to read block state")
             }
+            MonitorWarningKind::Firewall => {
+                self.choose("防火墙规则状态异常", "Firewall rule state mismatch")
+            }
         }
     }
 

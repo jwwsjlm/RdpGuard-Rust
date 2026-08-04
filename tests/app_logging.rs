@@ -26,6 +26,10 @@ fn applied_blocks_and_unblocks_are_logged_before_the_summary() {
             },
             Action::Unblock { ip: unblocked_ip },
         ],
+        repaired: 0,
+        orphans_removed: 0,
+        capacity_dropped: 0,
+        warnings: Vec::new(),
     };
 
     log_run_report(&log, false, &report).unwrap();
@@ -41,7 +45,7 @@ fn applied_blocks_and_unblocks_are_logged_before_the_summary() {
         .find(&format!("unblock applied: ip={unblocked_ip}"))
         .unwrap();
     let summary = text
-        .find("check complete: failures=5, blocked=1, unblocked=1")
+        .find("health heartbeat: failures=5, active_actions=2, repaired=0, orphans_removed=0, warnings=0")
         .unwrap();
     assert!(block < unblock && unblock < summary);
 }
@@ -59,6 +63,10 @@ fn dry_run_does_not_create_a_log() {
             failures: 5,
             expires_at: Utc.with_ymd_and_hms(2026, 8, 4, 18, 0, 0).unwrap(),
         }],
+        repaired: 0,
+        orphans_removed: 0,
+        capacity_dropped: 0,
+        warnings: Vec::new(),
     };
 
     log_run_report(&log, true, &report).unwrap();

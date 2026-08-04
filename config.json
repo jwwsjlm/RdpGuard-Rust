@@ -1,9 +1,17 @@
 {
+  "schema_version": 2,
   "check_interval_seconds": 60,
   "window_minutes": 10,
   "failure_threshold": 5,
   "block_minutes": 360,
   "max_log_size_mb": 10,
   "log_retention_files": 5,
-  "whitelist": []
+  "whitelist": [],
+  "block_scope": "all_inbound",
+  "rdp_port": null,
+  "repeat_block_multiplier": 2,
+  "max_block_minutes": 10080,
+  "repeat_reset_days": 30,
+  "max_active_blocks": 5000,
+  "heartbeat_minutes": 60
 }
