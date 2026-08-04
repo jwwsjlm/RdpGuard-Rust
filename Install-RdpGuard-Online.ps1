@@ -146,11 +146,19 @@ function Invoke-RdpGuardMenuChoice {
         '0' { $result.Exit = $true }
         '3' { $result.Language = if ($Language -eq 'zh-CN') { 'en-US' } else { 'zh-CN' } }
         '1' {
-            if ($null -eq $result.Bundle) { $result.Bundle = & $BundleProvider }
+            if ($null -eq $result.Bundle) {
+                Write-Host (Get-OnlineText $Language Downloading) -ForegroundColor Cyan
+                $result.Bundle = & $BundleProvider
+                Write-Host (Get-OnlineText $Language Ready) -ForegroundColor Green
+            }
             & $InstallAction $result.Bundle $result.Language | ForEach-Object { Write-Host $_ }
         }
         '2' {
-            if ($null -eq $result.Bundle) { $result.Bundle = & $BundleProvider }
+            if ($null -eq $result.Bundle) {
+                Write-Host (Get-OnlineText $Language Downloading) -ForegroundColor Cyan
+                $result.Bundle = & $BundleProvider
+                Write-Host (Get-OnlineText $Language Ready) -ForegroundColor Green
+            }
             & $MonitorAction $result.Bundle $result.Language | ForEach-Object { Write-Host $_ }
         }
         default { $result.Valid = $false }
@@ -161,15 +169,10 @@ function Invoke-RdpGuardMenuChoice {
 function Invoke-OnlineLauncher {
     $language = Resolve-RdpGuardLanguage -Language auto -UiCulture $PSUICulture
     $bundle = $null
-    $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $bundleProvider = {
-        Write-Host (Get-OnlineText $language Downloading) -ForegroundColor Cyan
-        $verified = Get-VerifiedReleaseBundle
-        Write-Host (Get-OnlineText $language Ready) -ForegroundColor Green
-        return $verified
-    }
+    $bundleProvider = { Get-VerifiedReleaseBundle }
     $installAction = {
         param($VerifiedBundle, $SelectedLanguage)
+        $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
         $installer = Join-Path $VerifiedBundle.Root 'Install-RdpGuard.ps1'
         & $windowsPowerShell -NoLogo -NoProfile -ExecutionPolicy Bypass -File $installer -Language $SelectedLanguage
         if ($LASTEXITCODE -ne 0) { throw "$(Get-OnlineText $SelectedLanguage InstallFailed): $LASTEXITCODE" }
