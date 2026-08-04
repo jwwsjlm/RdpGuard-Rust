@@ -5,6 +5,7 @@ pub mod elevation;
 pub mod engine;
 pub mod events;
 pub mod firewall;
+pub mod language;
 pub mod logging;
 pub mod monitor;
 pub mod monitor_runtime;

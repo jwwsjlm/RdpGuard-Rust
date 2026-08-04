@@ -17,6 +17,7 @@ use crate::{
     app::AppPaths,
     connections::{query_rdp_connections, read_rdp_port},
     events::{EventQueryResult, query_recent_auth_events, query_recent_guard_failures},
+    language::Language,
     monitor::{
         AuthEvent, GuardFailureEvent, MonitorSnapshot, TcpConnection, aggregate_ip_summaries,
     },
@@ -132,7 +133,7 @@ impl Drop for TerminalRestore {
     }
 }
 
-pub fn run_interactive_monitor() -> Result<()> {
+pub fn run_interactive_monitor(_language: Language) -> Result<()> {
     let mut sources = WindowsMonitorSources::default();
     let snapshot = collect_snapshot(&mut sources, 60, Utc::now());
     let mut app = MonitorApp::new(snapshot);

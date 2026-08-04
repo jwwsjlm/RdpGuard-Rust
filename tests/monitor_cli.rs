@@ -14,5 +14,20 @@ fn monitor_version_and_help_do_not_require_elevation() {
     assert!(help.status.success());
     let text = String::from_utf8_lossy(&help.stdout);
     assert!(text.contains("Tab"));
-    assert!(text.contains("30"));
+    assert!(text.contains("--language"));
+    assert!(text.contains("l"));
+    assert!(!text.contains("30 seconds"));
+
+    let chinese_help = Command::new(binary)
+        .args(["--language", "zh-CN", "--help"])
+        .output()
+        .unwrap();
+    assert!(chinese_help.status.success());
+    assert!(String::from_utf8_lossy(&chinese_help.stdout).contains("历史"));
+
+    let invalid_language = Command::new(binary)
+        .args(["--language", "de-DE"])
+        .output()
+        .unwrap();
+    assert!(!invalid_language.status.success());
 }
