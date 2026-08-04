@@ -50,6 +50,8 @@ function Get-RdpGuardText {
         WindowMinutes = @('失败统计窗口（分钟）', 'Failure window (minutes)')
         FailureThreshold = @('同一 IP 失败次数', 'Failures per IP')
         BlockMinutes = @('封禁时长（分钟）', 'Block duration (minutes)')
+        MaxLogSize = @('单个日志文件上限（MB）', 'Maximum log file size (MB)')
+        LogRetention = @('保留的历史日志文件数', 'Number of rotated log files to keep')
         Whitelist = @('IP 白名单（逗号分隔；输入 clear 或 清空可清空）', 'IP whitelist (comma-separated; enter clear to empty it)')
         InvalidValue = @('输入无效', 'Invalid value')
         ElevationCancelled = @('管理员权限请求已取消或失败', 'Administrator elevation was cancelled or failed')
@@ -109,6 +111,8 @@ function New-RdpGuardConfig {
         [Parameter(Mandatory)][long]$WindowMinutes,
         [Parameter(Mandatory)][long]$FailureThreshold,
         [Parameter(Mandatory)][long]$BlockMinutes,
+        [Parameter(Mandatory)][long]$MaxLogSizeMb,
+        [Parameter(Mandatory)][long]$LogRetentionFiles,
         [AllowEmptyCollection()][string[]]$Whitelist
     )
 
@@ -117,6 +121,8 @@ function New-RdpGuardConfig {
         window_minutes = $WindowMinutes
         failure_threshold = $FailureThreshold
         block_minutes = $BlockMinutes
+        max_log_size_mb = $MaxLogSizeMb
+        log_retention_files = $LogRetentionFiles
         whitelist = @($Whitelist)
     }
 }
@@ -128,9 +134,11 @@ function ConvertTo-ValidatedConfig {
     $window = Read-BoundedInteger -Raw ([string]$InputObject.window_minutes) -Current 10 -Minimum 1 -Maximum 1440
     $threshold = Read-BoundedInteger -Raw ([string]$InputObject.failure_threshold) -Current 5 -Minimum 1 -Maximum 10000
     $duration = Read-BoundedInteger -Raw ([string]$InputObject.block_minutes) -Current 360 -Minimum 1 -Maximum 525600
+    $maxLogSize = Read-BoundedInteger -Raw ([string]$InputObject.max_log_size_mb) -Current 10 -Minimum 1 -Maximum 1024
+    $logRetention = Read-BoundedInteger -Raw ([string]$InputObject.log_retention_files) -Current 5 -Minimum 1 -Maximum 100
     $rawWhitelist = (@($InputObject.whitelist) -join ',')
     $whitelist = @(Read-Whitelist -Raw $rawWhitelist -Current @())
-    return New-RdpGuardConfig $interval $window $threshold $duration $whitelist
+    return New-RdpGuardConfig $interval $window $threshold $duration $maxLogSize $logRetention $whitelist
 }
 
 function Read-IntegerPrompt {
@@ -163,6 +171,8 @@ function Get-InteractiveConfig {
     $window = Read-IntegerPrompt (Get-RdpGuardText $Language WindowMinutes) $CurrentConfig.window_minutes 1 1440 $Language
     $threshold = Read-IntegerPrompt (Get-RdpGuardText $Language FailureThreshold) $CurrentConfig.failure_threshold 1 10000 $Language
     $duration = Read-IntegerPrompt (Get-RdpGuardText $Language BlockMinutes) $CurrentConfig.block_minutes 1 525600 $Language
+    $maxLogSize = Read-IntegerPrompt (Get-RdpGuardText $Language MaxLogSize) $CurrentConfig.max_log_size_mb 1 1024 $Language
+    $logRetention = Read-IntegerPrompt (Get-RdpGuardText $Language LogRetention) $CurrentConfig.log_retention_files 1 100 $Language
 
     while ($true) {
         $shown = if (@($CurrentConfig.whitelist).Count) { @($CurrentConfig.whitelist) -join ', ' } else { '-' }
@@ -174,13 +184,25 @@ function Get-InteractiveConfig {
             Write-Host "$((Get-RdpGuardText $Language InvalidValue)): $($_.Exception.Message)" -ForegroundColor Yellow
         }
     }
-    return New-RdpGuardConfig $interval $window $threshold $duration $whitelist
+    return New-RdpGuardConfig $interval $window $threshold $duration $maxLogSize $logRetention $whitelist
 }
 
 function Test-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function New-ElevatedPowerShellArguments {
+    param(
+        [Parameter(Mandatory)][string]$EncodedCommand,
+        [switch]$UseNonInteractive
+    )
+
+    $arguments = @('-NoLogo', '-NoProfile')
+    if ($UseNonInteractive) { $arguments += '-NonInteractive' }
+    $arguments += @('-ExecutionPolicy', 'Bypass', '-EncodedCommand', $EncodedCommand)
+    return $arguments
 }
 
 function Invoke-SelfElevation {
@@ -193,22 +215,38 @@ function Invoke-SelfElevation {
         throw 'Cannot determine the installer script path for elevation.'
     }
     $escapedPath = $PSCommandPath.Replace("'", "''")
-    $command = "& '$escapedPath' -Language '$ResolvedLanguage'"
-    if ($UseNonInteractive) { $command += ' -NonInteractive' }
+    $invokeInstaller = "& '$escapedPath' -Language '$ResolvedLanguage'"
+    if ($UseNonInteractive) { $invokeInstaller += ' -NonInteractive' }
+    $errorPath = Join-Path ([IO.Path]::GetTempPath()) "RdpGuard-install-$([Guid]::NewGuid().ToString('N')).error.txt"
+    $escapedErrorPath = $errorPath.Replace("'", "''")
+    $command = @"
+try {
+    $invokeInstaller
+} catch {
+    `$detail = (`$_ | Out-String)
+    [IO.File]::WriteAllText('$escapedErrorPath', `$detail, [Text.UTF8Encoding]::new(`$false))
+    exit 1
+}
+"@
     $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
     $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $powerShellArguments = @(New-ElevatedPowerShellArguments -EncodedCommand $encodedCommand -UseNonInteractive:$UseNonInteractive)
 
     try {
-        $process = Start-Process -FilePath $windowsPowerShell -Verb RunAs -ArgumentList @(
-            '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-            '-EncodedCommand', $encodedCommand
-        ) -Wait -PassThru
+        $process = Start-Process -FilePath $windowsPowerShell -Verb RunAs -ArgumentList $powerShellArguments -Wait -PassThru
     } catch {
+        if (Test-Path -LiteralPath $errorPath) { Remove-Item -LiteralPath $errorPath -Force }
         throw "$(Get-RdpGuardText $ResolvedLanguage ElevationCancelled): $($_.Exception.Message)"
     }
     if ($process.ExitCode -ne 0) {
+        $detail = if (Test-Path -LiteralPath $errorPath) { [IO.File]::ReadAllText($errorPath).Trim() } else { '' }
+        if (Test-Path -LiteralPath $errorPath) { Remove-Item -LiteralPath $errorPath -Force }
+        if ($detail) {
+            throw "Elevated RdpGuard installation failed with exit code $($process.ExitCode): $detail"
+        }
         throw "Elevated RdpGuard installation failed with exit code $($process.ExitCode)."
     }
+    if (Test-Path -LiteralPath $errorPath) { Remove-Item -LiteralPath $errorPath -Force }
     Write-Output 'RdpGuard installation completed in an elevated PowerShell process.'
     exit 0
 }

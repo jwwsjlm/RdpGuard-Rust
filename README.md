@@ -34,6 +34,8 @@
 - 失败统计窗口
 - 同一 IP 的失败次数
 - 封禁时长
+- 单个日志文件上限
+- 保留的历史日志文件数
 - IPv4/IPv6 白名单
 
 已有安装会显示当前配置，直接按 Enter 保留原值。配置完成后自动安装或升级，原有日志、封禁状态和配置会保留。
@@ -91,6 +93,8 @@ config.json    防护设置
 state.json     当前封禁及解封时间
 rdpguard.log   服务运行日志
 ```
+
+日志默认达到 10 MB 时自动轮转，保留 `rdpguard.log.1` 到 `rdpguard.log.5`。可在配置向导或 `config.json` 中调整 `max_log_size_mb` 和 `log_retention_files`。
 
 ## 升级
 

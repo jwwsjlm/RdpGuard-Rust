@@ -20,6 +20,21 @@ fn non_admin_install_self_elevates_via_uac() {
 }
 
 #[test]
+fn interactive_uac_install_allows_prompts_and_reports_child_errors() {
+    for required in [
+        "New-ElevatedPowerShellArguments",
+        "if ($UseNonInteractive) { $arguments += '-NonInteractive' }",
+        "RdpGuard-install-",
+        "[IO.File]::ReadAllText($errorPath)",
+    ] {
+        assert!(
+            INSTALLER.contains(required),
+            "installer is missing interactive elevation safety: {required}"
+        );
+    }
+}
+
+#[test]
 fn installer_supports_bilingual_interactive_and_noninteractive_configuration() {
     for required in [
         "$Language",

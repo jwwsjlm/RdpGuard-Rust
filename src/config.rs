@@ -10,6 +10,8 @@ pub struct Config {
     pub window_minutes: u64,
     pub failure_threshold: usize,
     pub block_minutes: u64,
+    pub max_log_size_mb: u64,
+    pub log_retention_files: usize,
     pub whitelist: Vec<IpAddr>,
 }
 
@@ -20,6 +22,8 @@ impl Default for Config {
             window_minutes: 10,
             failure_threshold: 5,
             block_minutes: 360,
+            max_log_size_mb: 10,
+            log_retention_files: 5,
             whitelist: Vec::new(),
         }
     }
@@ -38,6 +42,12 @@ impl Config {
         }
         if !(1..=525_600).contains(&self.block_minutes) {
             bail!("block_minutes must be between 1 and 525600");
+        }
+        if !(1..=1_024).contains(&self.max_log_size_mb) {
+            bail!("max_log_size_mb must be between 1 and 1024");
+        }
+        if !(1..=100).contains(&self.log_retention_files) {
+            bail!("log_retention_files must be between 1 and 100");
         }
         Ok(())
     }

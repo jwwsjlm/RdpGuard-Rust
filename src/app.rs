@@ -8,7 +8,7 @@ use crate::{
     engine::{FileStateStore, MemoryStateStore, RunReport, run_once, run_once_observed},
     events::WindowsEventSource,
     firewall::{DryRunFirewall, FirewallChange, WindowsFirewall},
-    logging,
+    logging::{self, RotationPolicy},
     policy::Action,
     state::load_state,
 };
@@ -40,6 +40,8 @@ pub struct RunOutcome {
 
 pub fn execute_once(paths: &AppPaths, dry_run: bool) -> Result<RunOutcome> {
     let config = Config::load(&paths.config)?;
+    let log_policy =
+        RotationPolicy::from_megabytes(config.max_log_size_mb, config.log_retention_files);
     let mut events = WindowsEventSource;
     let now = Utc::now();
 
@@ -53,7 +55,7 @@ pub fn execute_once(paths: &AppPaths, dry_run: bool) -> Result<RunOutcome> {
             &mut store,
             now,
             &config,
-            |action| log_applied_action(&paths.log, action),
+            |action| log_applied_action(&paths.log, action, log_policy),
         )?;
         RunOutcome {
             report,
@@ -72,7 +74,7 @@ pub fn execute_once(paths: &AppPaths, dry_run: bool) -> Result<RunOutcome> {
     };
 
     if !dry_run {
-        log_run_summary(&paths.log, &outcome.report)?;
+        log_run_summary(&paths.log, &outcome.report, log_policy)?;
     }
     Ok(outcome)
 }
@@ -81,35 +83,40 @@ pub fn log_run_report(path: &Path, dry_run: bool, report: &RunReport) -> Result<
     if dry_run {
         return Ok(());
     }
+    let policy = RotationPolicy::default();
     for action in &report.applied_actions {
-        log_applied_action(path, action)?;
+        log_applied_action(path, action, policy)?;
     }
-    log_run_summary(path, report)
+    log_run_summary(path, report, policy)
 }
 
-fn log_applied_action(path: &Path, action: &Action) -> Result<()> {
+fn log_applied_action(path: &Path, action: &Action, policy: RotationPolicy) -> Result<()> {
     match action {
         Action::Block {
             ip,
             failures,
             expires_at,
-        } => logging::append(
+        } => logging::append_with_policy(
             path,
             &format!(
                 "block applied: ip={ip}, failures={failures}, expires_at={}",
                 expires_at.to_rfc3339()
             ),
+            policy,
         ),
-        Action::Unblock { ip } => logging::append(path, &format!("unblock applied: ip={ip}")),
+        Action::Unblock { ip } => {
+            logging::append_with_policy(path, &format!("unblock applied: ip={ip}"), policy)
+        }
     }
 }
 
-fn log_run_summary(path: &Path, report: &RunReport) -> Result<()> {
-    logging::append(
+fn log_run_summary(path: &Path, report: &RunReport, policy: RotationPolicy) -> Result<()> {
+    logging::append_with_policy(
         path,
         &format!(
             "check complete: failures={}, blocked={}, unblocked={}",
             report.failures, report.blocked, report.unblocked
         ),
+        policy,
     )
 }

@@ -10,6 +10,8 @@ fn default_config_is_sixty_ten_five_three_sixty() {
     assert_eq!(config.window_minutes, 10);
     assert_eq!(config.failure_threshold, 5);
     assert_eq!(config.block_minutes, 360);
+    assert_eq!(config.max_log_size_mb, 10);
+    assert_eq!(config.log_retention_files, 5);
     assert!(config.whitelist.is_empty());
     config.validate().unwrap();
 }
@@ -54,6 +56,8 @@ fn check_interval_is_loaded_from_json() {
     let json = serde_json::to_value(config).unwrap();
 
     assert_eq!(json["check_interval_seconds"], 120);
+    assert_eq!(json["max_log_size_mb"], 10);
+    assert_eq!(json["log_retention_files"], 5);
 }
 
 #[test]
@@ -92,6 +96,14 @@ fn unsafe_policy_limits_are_rejected() {
         },
         Config {
             block_minutes: 525_601,
+            ..Config::default()
+        },
+        Config {
+            max_log_size_mb: 1_025,
+            ..Config::default()
+        },
+        Config {
+            log_retention_files: 101,
             ..Config::default()
         },
     ] {

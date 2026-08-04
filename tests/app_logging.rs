@@ -1,5 +1,10 @@
 use chrono::{Duration, TimeZone, Utc};
-use rdpguard::{app::log_run_report, engine::RunReport, policy::Action};
+use rdpguard::{
+    app::log_run_report,
+    engine::RunReport,
+    logging::{RotationPolicy, append_with_policy},
+    policy::Action,
+};
 
 #[test]
 fn applied_blocks_and_unblocks_are_logged_before_the_summary() {
@@ -59,4 +64,28 @@ fn dry_run_does_not_create_a_log() {
     log_run_report(&log, true, &report).unwrap();
 
     assert!(!log.exists());
+}
+
+#[test]
+fn oversized_logs_rotate_and_keep_the_configured_history() {
+    let directory = tempfile::tempdir().unwrap();
+    let log = directory.path().join("rdpguard.log");
+    let policy = RotationPolicy {
+        max_bytes: 1,
+        retained_files: 2,
+    };
+
+    for message in ["first", "second", "third", "fourth"] {
+        append_with_policy(&log, message, policy).unwrap();
+    }
+
+    assert!(std::fs::read_to_string(&log).unwrap().contains("fourth"));
+    assert!(
+        std::fs::read_to_string(directory.path().join("rdpguard.log.1"))
+            .unwrap()
+            .contains("third")
+    );
+    let second_archive = std::fs::read_to_string(directory.path().join("rdpguard.log.2")).unwrap();
+    assert!(second_archive.contains("second"));
+    assert!(!second_archive.contains("first"));
 }
