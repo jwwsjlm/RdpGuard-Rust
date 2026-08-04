@@ -32,7 +32,9 @@
 
 ## 发布文件
 
-- `rdpguard.exe` 大小：587,776 字节。
-- `rdpguard.exe` SHA-256：`8E37071233565E7B94A69C3446302F8B8A88889344B2BDE5E0F3D17A0840B2F4`。
+- `rdpguard.exe` 大小：604,160 字节。
+- `rdpguard.exe` SHA-256：`1DAC981B84F29708BF3C5CEBAFA4866807539A6FE3DC700E8A3F4556576DCA61`。
+- Cargo 直接依赖已核对为 2026-08-04 的 crates.io 最新稳定版本。
+- GitHub Actions 工作流已通过最新版 `actionlint` 和 Prettier 检查。
 
 本次仓库整理没有替换或重启当前计算机上已运行的服务。使用 v0.2.0 的可配置检查间隔时，请按 README 的升级步骤重新运行安装器。

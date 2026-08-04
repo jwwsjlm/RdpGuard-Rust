@@ -1,5 +1,7 @@
 # RdpGuard
 
+[![CI](https://github.com/jwwsjlm/RdpGuard-Rust/actions/workflows/ci.yml/badge.svg)](https://github.com/jwwsjlm/RdpGuard-Rust/actions/workflows/ci.yml)
+
 RdpGuard 是一个面向 Windows 的低占用 Rust 服务。它持续读取系统 RDP 事件日志，在同一公网 IP 的失败次数达到阈值后，通过 Windows 防火墙临时阻止该地址。
 
 默认策略：每 60 秒检查一次；同一公网 IP 在最近 10 分钟内失败达到 5 次，封禁 360 分钟。到期自动解封，重启后仍保留未到期的封禁状态。
@@ -212,6 +214,12 @@ git push -u origin main
 git tag v0.2.0
 git push origin v0.2.0
 ```
+
+仓库包含以下自动化维护：
+
+- GitHub Actions 在每次推送和 Pull Request 时运行格式检查、Clippy、测试和 Windows release 构建。
+- 成功构建后上传 `rdpguard-windows-x64` 构件。
+- Dependabot 每周检查 Cargo 依赖和 GitHub Actions，自动提交升级 Pull Request。
 
 ## 安全说明
 

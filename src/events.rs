@@ -1,7 +1,7 @@
 use std::net::IpAddr;
 
 use anyhow::{Context, Result, bail};
-use quick_xml::{Reader, events::Event};
+use quick_xml::{Reader, XmlVersion, events::Event};
 use windows::{
     Win32::System::EventLog::{
         EVT_HANDLE, EvtClose, EvtNext, EvtQuery, EvtQueryChannelPath, EvtQueryReverseDirection,
@@ -130,7 +130,10 @@ pub fn parse_failed_ips(xml: &str) -> Result<Vec<IpAddr>> {
                         .any(|attribute| {
                             attribute.key.as_ref() == b"Name"
                                 && attribute
-                                    .decode_and_unescape_value(reader.decoder())
+                                    .decoded_and_normalized_value(
+                                        XmlVersion::Implicit1_0,
+                                        reader.decoder(),
+                                    )
                                     .is_ok_and(|value| value == "IPString")
                         });
             }
