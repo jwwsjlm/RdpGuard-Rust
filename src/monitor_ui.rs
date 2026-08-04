@@ -8,45 +8,33 @@ use ratatui::{
     widgets::{Block, Borders, Cell, Paragraph, Row, Table, Tabs, Wrap},
 };
 
-use crate::monitor::{AuthResult, MonitorSnapshot};
+use crate::{
+    language::Language,
+    monitor::{AuthResult, MonitorSnapshot, MonitorWarningKind},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MonitorPage {
     Overview,
     AuthEvents,
-    Connections,
 }
 
 impl MonitorPage {
     fn next(self) -> Self {
         match self {
             Self::Overview => Self::AuthEvents,
-            Self::AuthEvents => Self::Connections,
-            Self::Connections => Self::Overview,
+            Self::AuthEvents => Self::Overview,
         }
     }
 
     fn previous(self) -> Self {
-        match self {
-            Self::Overview => Self::Connections,
-            Self::AuthEvents => Self::Overview,
-            Self::Connections => Self::AuthEvents,
-        }
+        self.next()
     }
 
     fn index(self) -> usize {
         match self {
             Self::Overview => 0,
             Self::AuthEvents => 1,
-            Self::Connections => 2,
-        }
-    }
-
-    fn title(self) -> &'static str {
-        match self {
-            Self::Overview => "IP 概览",
-            Self::AuthEvents => "登录事件",
-            Self::Connections => "当前连接",
         }
     }
 }
@@ -68,15 +56,6 @@ impl TimeRange {
             Self::SevenDays => 7 * 24 * 60,
         }
     }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::TenMinutes => "10 分钟",
-            Self::OneHour => "1 小时",
-            Self::OneDay => "24 小时",
-            Self::SevenDays => "7 天",
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -84,17 +63,19 @@ pub struct MonitorApp {
     snapshot: MonitorSnapshot,
     page: MonitorPage,
     range: TimeRange,
+    language: Language,
     row_offset: usize,
     should_quit: bool,
     refresh_requested: bool,
 }
 
 impl MonitorApp {
-    pub fn new(snapshot: MonitorSnapshot) -> Self {
+    pub fn new(snapshot: MonitorSnapshot, language: Language) -> Self {
         Self {
             snapshot,
             page: MonitorPage::Overview,
             range: TimeRange::OneHour,
+            language,
             row_offset: 0,
             should_quit: false,
             refresh_requested: false,
@@ -107,6 +88,10 @@ impl MonitorApp {
 
     pub fn range(&self) -> TimeRange {
         self.range
+    }
+
+    pub fn language(&self) -> Language {
+        self.language
     }
 
     pub fn row_offset(&self) -> usize {
@@ -136,7 +121,7 @@ impl MonitorApp {
 
     pub fn handle_key(&mut self, key: KeyCode) {
         match key {
-            KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
+            KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => self.should_quit = true,
             KeyCode::Tab => {
                 self.page = self.page.next();
                 self.row_offset = 0;
@@ -150,6 +135,7 @@ impl MonitorApp {
             KeyCode::Char('3') => self.set_range(TimeRange::OneDay),
             KeyCode::Char('4') => self.set_range(TimeRange::SevenDays),
             KeyCode::Char('r') | KeyCode::Char('R') => self.request_refresh(),
+            KeyCode::Char('l') | KeyCode::Char('L') => self.language = self.language.toggle(),
             KeyCode::Down => self.row_offset = self.row_offset.saturating_add(1),
             KeyCode::Up => self.row_offset = self.row_offset.saturating_sub(1),
             KeyCode::PageDown => self.row_offset = self.row_offset.saturating_add(10),
@@ -168,6 +154,55 @@ impl MonitorApp {
     }
 }
 
+struct MonitorText(Language);
+
+impl MonitorText {
+    fn choose<'a>(&self, chinese: &'a str, english: &'a str) -> &'a str {
+        match self.0 {
+            Language::Chinese => chinese,
+            Language::English => english,
+        }
+    }
+
+    fn page(&self, page: MonitorPage) -> &'static str {
+        match page {
+            MonitorPage::Overview => self.choose("IP 概览", "IP Overview"),
+            MonitorPage::AuthEvents => self.choose("登录事件", "Login Events"),
+        }
+    }
+
+    fn range(&self, range: TimeRange) -> &'static str {
+        match range {
+            TimeRange::TenMinutes => self.choose("10 分钟", "10 minutes"),
+            TimeRange::OneHour => self.choose("1 小时", "1 hour"),
+            TimeRange::OneDay => self.choose("24 小时", "24 hours"),
+            TimeRange::SevenDays => self.choose("7 天", "7 days"),
+        }
+    }
+
+    fn warning_prefix(&self, kind: MonitorWarningKind) -> &'static str {
+        match kind {
+            MonitorWarningKind::AuthLog => {
+                self.choose("Security 登录日志读取失败", "Failed to read Security log")
+            }
+            MonitorWarningKind::GuardLog => self.choose(
+                "RdpCoreTS 防护日志读取失败",
+                "Failed to read RdpCoreTS guard log",
+            ),
+            MonitorWarningKind::BlockState => {
+                self.choose("封禁状态读取失败", "Failed to read block state")
+            }
+        }
+    }
+
+    fn footer(&self) -> &'static str {
+        self.choose(
+            "Tab/Shift+Tab 页面  1:10分钟  2:1小时  3:24小时  4:7天  r:刷新  l:语言  ↑↓:滚动  q:退出",
+            "Tab:page  1:10m  2:1h  3:24h  4:7d  r:refresh  l:language  Up/Down:scroll  q:quit",
+        )
+    }
+}
+
 fn local_time(timestamp: Option<DateTime<Utc>>) -> String {
     timestamp
         .map(|value| {
@@ -180,15 +215,21 @@ fn local_time(timestamp: Option<DateTime<Utc>>) -> String {
 }
 
 pub fn render(frame: &mut Frame<'_>, app: &MonitorApp) {
+    let text = MonitorText(app.language);
     let area = frame.area();
     if area.width < 60 || area.height < 12 {
-        let text = format!(
-            "RdpGuard Monitor\n{} | 范围 {}\n终端窗口过小，请放大后查看完整表格。",
-            app.page.title(),
-            app.range.label()
+        let message = format!(
+            "RdpGuard Monitor\n{} | {} {}\n{}",
+            text.page(app.page),
+            text.choose("范围", "Range"),
+            text.range(app.range),
+            text.choose(
+                "终端窗口过小，请放大后查看完整表格。",
+                "The terminal is too small; enlarge it to view the table."
+            )
         );
         frame.render_widget(
-            Paragraph::new(text)
+            Paragraph::new(message)
                 .block(Block::default().borders(Borders::ALL).title(" RdpGuard "))
                 .wrap(Wrap { trim: true }),
             area,
@@ -214,9 +255,10 @@ pub fn render(frame: &mut Frame<'_>, app: &MonitorApp) {
     .split(area);
 
     let header = format!(
-        "RdpGuard Monitor  |  RDP 端口 {}  |  范围 {}  |  更新 {}",
-        app.snapshot.rdp_port,
-        app.range.label(),
+        "RdpGuard Monitor  |  {} {}  |  {} {}",
+        text.choose("范围", "Range"),
+        text.range(app.range),
+        text.choose("读取时间", "Read at"),
         local_time(Some(app.snapshot.refreshed_at))
     );
     frame.render_widget(
@@ -225,50 +267,75 @@ pub fn render(frame: &mut Frame<'_>, app: &MonitorApp) {
     );
 
     frame.render_widget(
-        Tabs::new(["IP 概览", "登录事件", "当前连接"])
-            .select(app.page.index())
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .divider(" | ")
-            .block(Block::default().borders(Borders::ALL)),
+        Tabs::new([
+            text.page(MonitorPage::Overview),
+            text.page(MonitorPage::AuthEvents),
+        ])
+        .select(app.page.index())
+        .highlight_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .divider(" | ")
+        .block(Block::default().borders(Borders::ALL)),
         chunks[1],
     );
 
     if warning_height > 0 {
-        let mut warnings = app.snapshot.warnings.clone();
+        let mut warnings: Vec<_> = app
+            .snapshot
+            .warnings
+            .iter()
+            .map(|warning| format!("{}: {}", text.warning_prefix(warning.kind), warning.detail))
+            .collect();
         if app.snapshot.auth_truncated {
-            warnings.push("Security 登录事件超过 50,000 条，结果已截断".into());
+            warnings.push(
+                text.choose(
+                    "Security 登录事件超过 50,000 条，结果已截断",
+                    "Security events exceeded 50,000; results were truncated",
+                )
+                .into(),
+            );
         }
         if app.snapshot.guard_truncated {
-            warnings.push("RdpCoreTS 防护事件超过 50,000 条，结果已截断".into());
+            warnings.push(
+                text.choose(
+                    "RdpCoreTS 防护事件超过 50,000 条，结果已截断",
+                    "RdpCoreTS guard events exceeded 50,000; results were truncated",
+                )
+                .into(),
+            );
         }
         frame.render_widget(
             Paragraph::new(warnings.join(" | "))
                 .style(Style::default().fg(Color::Yellow))
-                .block(Block::default().borders(Borders::ALL).title(" 提示 ")),
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(format!(" {} ", text.choose("提示", "Warning"))),
+                ),
             chunks[2],
         );
     }
 
     match app.page {
-        MonitorPage::Overview => render_overview(frame, chunks[3], app),
-        MonitorPage::AuthEvents => render_auth_events(frame, chunks[3], app),
-        MonitorPage::Connections => render_connections(frame, chunks[3], app),
+        MonitorPage::Overview => render_overview(frame, chunks[3], app, &text),
+        MonitorPage::AuthEvents => render_auth_events(frame, chunks[3], app, &text),
     }
 
     frame.render_widget(
-        Paragraph::new(Line::from(
-            "Tab/Shift+Tab 页面  1:10分钟  2:1小时  3:24小时  4:7天  r:刷新  ↑↓:滚动  q:退出",
-        ))
-        .style(Style::default().fg(Color::DarkGray)),
+        Paragraph::new(Line::from(text.footer())).style(Style::default().fg(Color::DarkGray)),
         chunks[4],
     );
 }
 
-fn render_overview(frame: &mut Frame<'_>, area: ratatui::layout::Rect, app: &MonitorApp) {
+fn render_overview(
+    frame: &mut Frame<'_>,
+    area: ratatui::layout::Rect,
+    app: &MonitorApp,
+    text: &MonitorText,
+) {
     let rows = app
         .snapshot
         .summaries
@@ -288,8 +355,11 @@ fn render_overview(frame: &mut Frame<'_>, area: ratatui::layout::Rect, app: &Mon
                 Cell::from(item.successes.to_string()),
                 Cell::from(item.failures.to_string()),
                 Cell::from(item.guard_failures.to_string()),
-                Cell::from(item.current_connections.to_string()),
-                Cell::from(if item.blocked { "是" } else { "否" }),
+                Cell::from(if item.blocked {
+                    text.choose("是", "Yes")
+                } else {
+                    text.choose("否", "No")
+                }),
                 Cell::from(local_time(item.expires_at)),
                 Cell::from(local_time(item.last_seen)),
             ])
@@ -297,41 +367,50 @@ fn render_overview(frame: &mut Frame<'_>, area: ratatui::layout::Rect, app: &Mon
         });
     let header = Row::new([
         "IP",
-        "尝试",
-        "成功",
-        "失败",
-        "防护失败",
-        "当前",
-        "封禁",
-        "解封时间",
-        "最后活动",
+        text.choose("尝试", "Attempts"),
+        text.choose("成功", "Success"),
+        text.choose("失败", "Failures"),
+        text.choose("防护失败", "Guard fails"),
+        text.choose("封禁", "Blocked"),
+        text.choose("解封时间", "Unblock time"),
+        text.choose("最后活动", "Last activity"),
     ])
     .style(
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD),
     );
-    let widths = [
-        Constraint::Length(20),
-        Constraint::Length(6),
-        Constraint::Length(6),
-        Constraint::Length(6),
-        Constraint::Length(10),
-        Constraint::Length(6),
-        Constraint::Length(6),
-        Constraint::Length(20),
-        Constraint::Min(19),
-    ];
     frame.render_widget(
-        Table::new(rows, widths)
-            .header(header)
-            .column_spacing(1)
-            .block(Block::default().borders(Borders::ALL).title(" IP 概览 ")),
+        Table::new(
+            rows,
+            [
+                Constraint::Length(20),
+                Constraint::Length(8),
+                Constraint::Length(7),
+                Constraint::Length(8),
+                Constraint::Length(11),
+                Constraint::Length(8),
+                Constraint::Length(20),
+                Constraint::Min(19),
+            ],
+        )
+        .header(header)
+        .column_spacing(1)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!(" {} ", text.page(MonitorPage::Overview))),
+        ),
         area,
     );
 }
 
-fn render_auth_events(frame: &mut Frame<'_>, area: ratatui::layout::Rect, app: &MonitorApp) {
+fn render_auth_events(
+    frame: &mut Frame<'_>,
+    area: ratatui::layout::Rect,
+    app: &MonitorApp,
+    text: &MonitorText,
+) {
     let rows = app
         .snapshot
         .auth_events
@@ -339,8 +418,8 @@ fn render_auth_events(frame: &mut Frame<'_>, area: ratatui::layout::Rect, app: &
         .skip(app.row_offset)
         .map(|event| {
             let (result, color) = match event.result {
-                AuthResult::Success => ("成功", Color::Green),
-                AuthResult::Failure => ("失败", Color::Red),
+                AuthResult::Success => (text.choose("成功", "Success"), Color::Green),
+                AuthResult::Failure => (text.choose("失败", "Failure"), Color::Red),
             };
             Row::new(vec![
                 Cell::from(local_time(Some(event.timestamp))),
@@ -352,7 +431,15 @@ fn render_auth_events(frame: &mut Frame<'_>, area: ratatui::layout::Rect, app: &
             ])
             .style(Style::default().fg(color))
         });
-    let header = Row::new(["本地时间", "结果", "IP", "用户名", "事件", "类型"]).style(
+    let header = Row::new([
+        text.choose("本地时间", "Local time"),
+        text.choose("结果", "Result"),
+        "IP",
+        text.choose("用户名", "Username"),
+        text.choose("事件", "Event"),
+        text.choose("类型", "Type"),
+    ])
+    .style(
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD),
@@ -362,7 +449,7 @@ fn render_auth_events(frame: &mut Frame<'_>, area: ratatui::layout::Rect, app: &
             rows,
             [
                 Constraint::Length(20),
-                Constraint::Length(6),
+                Constraint::Length(8),
                 Constraint::Length(24),
                 Constraint::Min(16),
                 Constraint::Length(7),
@@ -371,45 +458,11 @@ fn render_auth_events(frame: &mut Frame<'_>, area: ratatui::layout::Rect, app: &
         )
         .header(header)
         .column_spacing(1)
-        .block(Block::default().borders(Borders::ALL).title(" 登录事件 ")),
-        area,
-    );
-}
-
-fn render_connections(frame: &mut Frame<'_>, area: ratatui::layout::Rect, app: &MonitorApp) {
-    let rows = app
-        .snapshot
-        .connections
-        .iter()
-        .skip(app.row_offset)
-        .map(|item| {
-            Row::new(vec![
-                Cell::from(item.remote_ip.to_string()),
-                Cell::from(item.remote_port.to_string()),
-                Cell::from(item.local_port.to_string()),
-                Cell::from(item.state.clone()),
-                Cell::from(item.pid.to_string()),
-            ])
-        });
-    let header = Row::new(["远程 IP", "远程端口", "本地端口", "状态", "PID"]).style(
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
-    );
-    frame.render_widget(
-        Table::new(
-            rows,
-            [
-                Constraint::Min(24),
-                Constraint::Length(10),
-                Constraint::Length(10),
-                Constraint::Length(14),
-                Constraint::Length(10),
-            ],
-        )
-        .header(header)
-        .column_spacing(1)
-        .block(Block::default().borders(Borders::ALL).title(" 当前连接 ")),
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!(" {} ", text.page(MonitorPage::AuthEvents))),
+        ),
         area,
     );
 }

@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use chrono::{TimeZone, Utc};
 use rdpguard::{
     events::EventQueryResult,
-    monitor::{AuthEvent, AuthResult, GuardFailureEvent, TcpConnection},
+    monitor::{AuthEvent, AuthResult, GuardFailureEvent, MonitorWarningKind},
     monitor_runtime::{MonitorSources, collect_snapshot},
     state::{BlockRecord, State},
 };
@@ -29,20 +29,6 @@ impl MonitorSources for PartialSources {
         })
     }
 
-    fn rdp_port(&mut self) -> Result<u16> {
-        Ok(3389)
-    }
-
-    fn connections(&mut self, _rdp_port: u16) -> Result<Vec<TcpConnection>> {
-        Ok(vec![TcpConnection {
-            remote_ip: "198.51.100.20".parse().unwrap(),
-            local_port: 3389,
-            remote_port: 50_000,
-            state: "ESTABLISHED".into(),
-            pid: 1234,
-        }])
-    }
-
     fn state(&mut self) -> Result<State> {
         Err(anyhow!("state denied"))
     }
@@ -56,22 +42,20 @@ fn partial_source_failures_preserve_available_monitor_data() {
     let snapshot = collect_snapshot(&mut sources, 60, now);
 
     assert!(snapshot.auth_events.is_empty());
-    assert_eq!(snapshot.connections.len(), 1);
     assert_eq!(snapshot.summaries.len(), 1);
     assert_eq!(snapshot.summaries[0].guard_failures, 1);
-    assert_eq!(snapshot.summaries[0].current_connections, 1);
     assert_eq!(snapshot.warnings.len(), 2);
     assert!(
         snapshot
             .warnings
             .iter()
-            .any(|warning| warning.contains("Security"))
+            .any(|warning| warning.kind == MonitorWarningKind::AuthLog)
     );
     assert!(
         snapshot
             .warnings
             .iter()
-            .any(|warning| warning.contains("封禁状态"))
+            .any(|warning| warning.kind == MonitorWarningKind::BlockState)
     );
 }
 
@@ -102,14 +86,6 @@ impl MonitorSources for StableSources {
             events: Vec::new(),
             truncated: false,
         })
-    }
-
-    fn rdp_port(&mut self) -> Result<u16> {
-        Ok(3389)
-    }
-
-    fn connections(&mut self, _rdp_port: u16) -> Result<Vec<TcpConnection>> {
-        Ok(Vec::new())
     }
 
     fn state(&mut self) -> Result<State> {

@@ -27,24 +27,26 @@ pub struct GuardFailureEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TcpConnection {
-    pub remote_ip: IpAddr,
-    pub local_port: u16,
-    pub remote_port: u16,
-    pub state: String,
-    pub pid: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MonitorSnapshot {
     pub summaries: Vec<IpSummary>,
     pub auth_events: Vec<AuthEvent>,
-    pub connections: Vec<TcpConnection>,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<MonitorWarning>,
     pub auth_truncated: bool,
     pub guard_truncated: bool,
-    pub rdp_port: u16,
     pub refreshed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MonitorWarningKind {
+    AuthLog,
+    GuardLog,
+    BlockState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MonitorWarning {
+    pub kind: MonitorWarningKind,
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +56,6 @@ pub struct IpSummary {
     pub successes: usize,
     pub failures: usize,
     pub guard_failures: usize,
-    pub current_connections: usize,
     pub blocked: bool,
     pub expires_at: Option<DateTime<Utc>>,
     pub last_seen: Option<DateTime<Utc>>,
@@ -68,7 +69,6 @@ impl IpSummary {
             successes: 0,
             failures: 0,
             guard_failures: 0,
-            current_connections: 0,
             blocked: false,
             expires_at: None,
             last_seen: None,
@@ -86,7 +86,6 @@ impl IpSummary {
 pub fn aggregate_ip_summaries(
     auth_events: &[AuthEvent],
     guard_events: &[GuardFailureEvent],
-    connections: &[TcpConnection],
     state: &State,
 ) -> Vec<IpSummary> {
     let mut summaries = HashMap::new();
@@ -109,13 +108,6 @@ pub fn aggregate_ip_summaries(
             .or_insert_with(|| IpSummary::new(event.ip));
         summary.guard_failures += 1;
         summary.observe(event.timestamp);
-    }
-
-    for connection in connections {
-        summaries
-            .entry(connection.remote_ip)
-            .or_insert_with(|| IpSummary::new(connection.remote_ip))
-            .current_connections += 1;
     }
 
     for (&ip, record) in &state.blocks {

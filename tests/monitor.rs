@@ -3,9 +3,7 @@ use std::{collections::HashMap, net::IpAddr};
 use chrono::{DateTime, TimeZone, Utc};
 use rdpguard::{
     events::{EventQueryResult, MAX_QUERY_EVENTS, parse_auth_event, parse_guard_failure_events},
-    monitor::{
-        AuthEvent, AuthResult, GuardFailureEvent, IpSummary, TcpConnection, aggregate_ip_summaries,
-    },
+    monitor::{AuthEvent, AuthResult, GuardFailureEvent, IpSummary, aggregate_ip_summaries},
     state::{BlockRecord, State},
 };
 
@@ -156,7 +154,7 @@ fn five_auth_failures_are_five_login_attempts_without_successes() {
         .map(|_| auth("203.0.113.10", AuthResult::Failure, 12))
         .collect();
 
-    let summaries = aggregate_ip_summaries(&auth_events, &[], &[], &State::default());
+    let summaries = aggregate_ip_summaries(&auth_events, &[], &State::default());
     let item = summary(&summaries, "203.0.113.10");
 
     assert_eq!(item.login_attempts, 5);
@@ -171,22 +169,12 @@ fn guard_failures_do_not_double_count_auth_attempts() {
         timestamp: timestamp(12),
         ip: "203.0.113.10".parse().unwrap(),
     }];
-    let connections = [TcpConnection {
-        remote_ip: "203.0.113.10".parse().unwrap(),
-        local_port: 3389,
-        remote_port: 50_000,
-        state: "Established".into(),
-        pid: 42,
-    }];
-
-    let summaries =
-        aggregate_ip_summaries(&auth_events, &guard_events, &connections, &State::default());
+    let summaries = aggregate_ip_summaries(&auth_events, &guard_events, &State::default());
     let item = summary(&summaries, "203.0.113.10");
 
     assert_eq!(item.login_attempts, 1);
     assert_eq!(item.failures, 1);
     assert_eq!(item.guard_failures, 1);
-    assert_eq!(item.current_connections, 1);
     assert_eq!(item.last_seen, Some(timestamp(12)));
 }
 
@@ -205,7 +193,7 @@ fn state_only_ips_are_blocked_with_expiration() {
         )]),
     };
 
-    let summaries = aggregate_ip_summaries(&[], &[], &[], &state);
+    let summaries = aggregate_ip_summaries(&[], &[], &state);
     let item = summary(&summaries, "203.0.113.20");
 
     assert!(item.blocked);
@@ -250,7 +238,7 @@ fn summaries_sort_by_guard_failures_failures_last_seen_then_ip() {
         },
     ];
 
-    let summaries = aggregate_ip_summaries(&auth_events, &guard_events, &[], &State::default());
+    let summaries = aggregate_ip_summaries(&auth_events, &guard_events, &State::default());
     let ips: Vec<_> = summaries.iter().map(|item| item.ip.to_string()).collect();
 
     assert_eq!(

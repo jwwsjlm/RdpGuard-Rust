@@ -11,7 +11,7 @@ chrono = { version = "0.4.45", features = ["clock", "serde"] }
 quick-xml = "0.41.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Globalization", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_NetworkManagement_WindowsFirewall",

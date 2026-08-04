@@ -1,7 +1,4 @@
-use std::{
-    io,
-    time::{Duration, Instant},
-};
+use std::{io, time::Duration};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -15,24 +12,19 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 
 use crate::{
     app::AppPaths,
-    connections::{query_rdp_connections, read_rdp_port},
     events::{EventQueryResult, query_recent_auth_events, query_recent_guard_failures},
     language::Language,
     monitor::{
-        AuthEvent, GuardFailureEvent, MonitorSnapshot, TcpConnection, aggregate_ip_summaries,
+        AuthEvent, GuardFailureEvent, MonitorSnapshot, MonitorWarning, MonitorWarningKind,
+        aggregate_ip_summaries,
     },
     monitor_ui::{MonitorApp, render},
     state::{State, load_state},
 };
 
-pub const REFRESH_INTERVAL: Duration = Duration::from_secs(30);
-const DEFAULT_RDP_PORT: u16 = 3389;
-
 pub trait MonitorSources {
     fn auth_events(&mut self, window_minutes: u64) -> Result<EventQueryResult<AuthEvent>>;
     fn guard_events(&mut self, window_minutes: u64) -> Result<EventQueryResult<GuardFailureEvent>>;
-    fn rdp_port(&mut self) -> Result<u16>;
-    fn connections(&mut self, rdp_port: u16) -> Result<Vec<TcpConnection>>;
     fn state(&mut self) -> Result<State>;
 }
 
@@ -50,14 +42,6 @@ impl MonitorSources for WindowsMonitorSources {
         query_recent_guard_failures(window_minutes)
     }
 
-    fn rdp_port(&mut self) -> Result<u16> {
-        read_rdp_port()
-    }
-
-    fn connections(&mut self, rdp_port: u16) -> Result<Vec<TcpConnection>> {
-        query_rdp_connections(rdp_port)
-    }
-
     fn state(&mut self) -> Result<State> {
         load_state(&self.paths.state)
     }
@@ -73,7 +57,10 @@ pub fn collect_snapshot<S: MonitorSources>(
     let (mut auth_events, auth_truncated) = match sources.auth_events(window_minutes) {
         Ok(result) => (result.events, result.truncated),
         Err(error) => {
-            warnings.push(format!("Security 登录日志读取失败: {error:#}"));
+            warnings.push(MonitorWarning {
+                kind: MonitorWarningKind::AuthLog,
+                detail: format!("{error:#}"),
+            });
             (Vec::new(), false)
         }
     };
@@ -82,44 +69,32 @@ pub fn collect_snapshot<S: MonitorSources>(
     let (guard_events, guard_truncated) = match sources.guard_events(window_minutes) {
         Ok(result) => (result.events, result.truncated),
         Err(error) => {
-            warnings.push(format!("RdpCoreTS 防护日志读取失败: {error:#}"));
+            warnings.push(MonitorWarning {
+                kind: MonitorWarningKind::GuardLog,
+                detail: format!("{error:#}"),
+            });
             (Vec::new(), false)
         }
     };
 
-    let rdp_port = match sources.rdp_port() {
-        Ok(port) => port,
-        Err(error) => {
-            warnings.push(format!(
-                "RDP 端口读取失败，暂用 {DEFAULT_RDP_PORT}: {error:#}"
-            ));
-            DEFAULT_RDP_PORT
-        }
-    };
-    let connections = match sources.connections(rdp_port) {
-        Ok(connections) => connections,
-        Err(error) => {
-            warnings.push(format!("当前 RDP 连接读取失败: {error:#}"));
-            Vec::new()
-        }
-    };
     let state = match sources.state() {
         Ok(state) => state,
         Err(error) => {
-            warnings.push(format!("封禁状态读取失败: {error:#}"));
+            warnings.push(MonitorWarning {
+                kind: MonitorWarningKind::BlockState,
+                detail: format!("{error:#}"),
+            });
             State::default()
         }
     };
-    let summaries = aggregate_ip_summaries(&auth_events, &guard_events, &connections, &state);
+    let summaries = aggregate_ip_summaries(&auth_events, &guard_events, &state);
 
     MonitorSnapshot {
         summaries,
         auth_events,
-        connections,
         warnings,
         auth_truncated,
         guard_truncated,
-        rdp_port,
         refreshed_at: now,
     }
 }
@@ -133,10 +108,10 @@ impl Drop for TerminalRestore {
     }
 }
 
-pub fn run_interactive_monitor(_language: Language) -> Result<()> {
+pub fn run_interactive_monitor(language: Language) -> Result<()> {
     let mut sources = WindowsMonitorSources::default();
     let snapshot = collect_snapshot(&mut sources, 60, Utc::now());
-    let mut app = MonitorApp::new(snapshot);
+    let mut app = MonitorApp::new(snapshot, language);
 
     enable_raw_mode().context("failed to enable terminal raw mode")?;
     let mut stdout = io::stdout();
@@ -150,8 +125,6 @@ pub fn run_interactive_monitor(_language: Language) -> Result<()> {
     terminal
         .clear()
         .context("failed to clear terminal monitor")?;
-    let mut last_refresh = Instant::now();
-
     while !app.should_quit() {
         terminal
             .draw(|frame| render(frame, &app))
@@ -167,10 +140,9 @@ pub fn run_interactive_monitor(_language: Language) -> Result<()> {
             app.handle_key(key.code);
         }
 
-        if app.take_refresh_request() || last_refresh.elapsed() >= REFRESH_INTERVAL {
+        if app.take_refresh_request() {
             let snapshot = collect_snapshot(&mut sources, app.range().minutes(), Utc::now());
             app.replace_snapshot(snapshot);
-            last_refresh = Instant::now();
         }
     }
 
