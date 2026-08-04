@@ -41,6 +41,7 @@ $archiveName = "RdpGuard-Rust-$ReleaseTag-windows-$(Get-NativeRdpGuardArchitectu
 $hash = 'a' * 64
 Assert-Equal (Get-ExpectedArchiveHash -ChecksumText "$hash  $archiveName`n" -ArchiveName $archiveName) $hash
 Assert-Equal (Get-ExpectedArchiveHash -ChecksumText "$hash  $archiveName`r`n" -ArchiveName $archiveName) $hash
+Assert-Equal (Get-ExpectedArchiveHash -ChecksumText "$hash  ./$archiveName`n" -ArchiveName $archiveName) $hash
 Assert-Throws { Get-ExpectedArchiveHash -ChecksumText 'invalid' -ArchiveName $archiveName }
 Assert-Throws { Get-ExpectedArchiveHash -ChecksumText "$hash  $archiveName`n$hash  $archiveName" -ArchiveName $archiveName }
 Assert-Throws { Assert-ArchiveHash -Expected ('0' * 64) -Actual ('1' * 64) }
