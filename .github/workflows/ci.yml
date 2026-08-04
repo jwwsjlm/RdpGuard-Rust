@@ -111,4 +111,4 @@ jobs:
       - run: cargo audit
       - run: cargo deny check
       - name: Actionlint
-        run: docker run --rm -v "$PWD:/repo" rhysd/actionlint:1.7.12 -color
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
