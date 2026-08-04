@@ -47,7 +47,9 @@ jobs:
 
       - name: Run PowerShell tests
         shell: pwsh
-        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tests\Test-InstallerConfig.ps1
+        run: |
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tests\Test-InstallerConfig.ps1
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tests\Test-OnlineInstaller.ps1
 
       - name: Build release executable
         run: cargo build --release --locked
@@ -63,6 +65,7 @@ jobs:
             target/release/rdpguard-monitor.exe
             config.json
             Install-RdpGuard.ps1
+            Install-RdpGuard-Online.ps1
             Uninstall-RdpGuard.ps1
             README.md
             docs/ADVANCED.md

@@ -63,6 +63,7 @@ jobs:
               'target\release\rdpguard-monitor.exe',
               'config.json',
               'Install-RdpGuard.ps1',
+              'Install-RdpGuard-Online.ps1',
               'Uninstall-RdpGuard.ps1',
               'README.md',
               'CHANGELOG.md',
@@ -92,10 +93,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ARCHIVE_PATH: ${{ steps.package.outputs.archive_path }}
           CHECKSUM_PATH: ${{ steps.package.outputs.checksum_path }}
+          ONLINE_INSTALLER_PATH: Install-RdpGuard-Online.ps1
         run: |
           gh release create $env:GITHUB_REF_NAME `
               $env:ARCHIVE_PATH `
               $env:CHECKSUM_PATH `
+              $env:ONLINE_INSTALLER_PATH `
               --repo $env:GITHUB_REPOSITORY `
               --title "RdpGuard $env:GITHUB_REF_NAME" `
               --generate-notes `
