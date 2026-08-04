@@ -3,7 +3,7 @@ param([switch]$LibraryMode)
 
 $ErrorActionPreference = 'Stop'
 $Repository = 'jwwsjlm/RdpGuard-Rust'
-$ReleaseTag = 'v0.3.4'
+$ReleaseTag = 'v0.3.5'
 
 function ConvertFrom-OnlineUtf8Base64 {
     param([Parameter(Mandatory)][string]$Value)
@@ -50,7 +50,7 @@ function Get-ExpectedArchiveHash {
         [Parameter(Mandatory)][string]$ArchiveName
     )
     $escapedName = [regex]::Escape($ArchiveName)
-    $found = [regex]::Matches($ChecksumText, "(?im)^([0-9a-f]{64})[ `t]+\*?$escapedName[ `t]*$")
+    $found = [regex]::Matches($ChecksumText, "(?im)^([0-9a-f]{64})[ `t]+\*?$escapedName[ `t]*`r?$")
     if ($found.Count -ne 1) {
         throw "Checksum file must contain exactly one SHA-256 entry for $ArchiveName."
     }

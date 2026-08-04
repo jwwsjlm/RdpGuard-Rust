@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.5 - 2026-08-05
+
+- 修复在线入口无法解析 Release 校验文件 `CRLF` 行尾的问题。
+- 在线安装器测试同时覆盖 Windows `CRLF` 与 Unix `LF` 校验文件。
+
 ## 0.3.4 - 2026-08-05
 
 - 在线入口改为纯 ASCII 源码并在运行时解码中文文案，同时兼容 `irm` 和 Windows PowerShell 5.1 文件执行。
