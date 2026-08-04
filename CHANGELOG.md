@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 - 2026-08-04
+
+- 移除 Dependabot 每周依赖检查。
+- 新增标签触发的 GitHub Release 工作流，自动发布 Windows ZIP 和 SHA-256 校验文件。
+
 ## 0.2.0 - 2026-08-04
 
 - 新增 `check_interval_seconds`，检查间隔可在 10–3600 秒内配置。

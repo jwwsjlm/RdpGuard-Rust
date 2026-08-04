@@ -208,18 +208,18 @@ git remote add origin https://github.com/你的用户名/rdpguard.git
 git push -u origin main
 ```
 
-发布版本时建议使用标签，并把带 `rdpguard.exe` 的 ZIP 上传为 GitHub Release 附件：
+发布版本时创建与 Cargo 版本一致的标签，Release 工作流会自动构建并上传附件：
 
 ```powershell
-git tag v0.2.0
-git push origin v0.2.0
+git tag -a v0.2.1 -m "RdpGuard v0.2.1"
+git push origin v0.2.1
 ```
 
 仓库包含以下自动化维护：
 
 - GitHub Actions 在每次推送和 Pull Request 时运行格式检查、Clippy、测试和 Windows release 构建。
 - 成功构建后上传 `rdpguard-windows-x64` 构件。
-- Dependabot 每周检查 Cargo 依赖和 GitHub Actions，自动提交升级 Pull Request。
+- 推送与 Cargo 版本一致的 `v*.*.*` 标签后，Release 工作流自动发布 Windows ZIP 和 SHA-256 校验文件。
 
 ## 安全说明
 
