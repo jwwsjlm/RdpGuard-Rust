@@ -1,6 +1,6 @@
 # RdpGuard 高级说明
 
-本页面向需要从源码构建、手动诊断或维护 Release 的用户。普通安装请直接阅读项目根目录的 `README.md`。
+普通安装和查看日志请阅读项目根目录的 `README.md`。本页用于源码构建、手动诊断和 Release 维护。
 
 ## 配置范围
 
@@ -11,9 +11,7 @@
 | `failure_threshold` | 1–10000 次 |
 | `block_minutes` | 1–525600 分钟 |
 
-所有数值必须是 JSON 正整数。`whitelist` 只支持单个 IPv4/IPv6 地址，不支持端口、主机名或 CIDR。
-
-配置无效、事件查询失败、防火墙修改失败或状态保存失败时，本轮采用保守策略，不记录未实际生效的封禁。服务会按保守间隔重试。
+`whitelist` 接受单个 IPv4/IPv6 地址，不支持端口、主机名或 CIDR。安装器默认打开交互配置；自动化环境可使用 `-NonInteractive` 保留现有有效配置或采用默认配置。
 
 ## 手动诊断
 
@@ -26,9 +24,7 @@
     --log .\rdpguard.log
 ```
 
-`--dry-run` 读取真实事件和已有状态，但不修改防火墙、状态文件或日志。
-
-真实执行一轮会修改系统，只能在管理员 PowerShell 中用于诊断：
+`--dry-run` 不修改防火墙、状态文件或日志。真实执行一轮会修改系统，只能在管理员 PowerShell 中使用：
 
 ```powershell
 .\rdpguard.exe --once `
@@ -37,7 +33,7 @@
     --log .\rdpguard.log
 ```
 
-服务详情与恢复策略：
+查看服务与恢复策略：
 
 ```powershell
 sc.exe qc RdpGuard
@@ -51,37 +47,36 @@ sc.exe qfailure RdpGuard
 ```powershell
 rustup default stable
 cargo fmt --check
-cargo clippy --all-targets --locked -- -D warnings
+cargo clippy --all-targets --all-features --locked -- -D warnings
 cargo test --all-targets --locked
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\Test-InstallerConfig.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\Test-OnlineInstaller.ps1
 cargo build --release --locked
-Copy-Item .\target\release\rdpguard.exe .\rdpguard.exe -Force
-Copy-Item .\target\release\rdpguard-monitor.exe .\rdpguard-monitor.exe -Force
 ```
 
-后台服务使用 Windows Event Log、Firewall COM 和 Windows Service API。监控器额外使用 Security 事件日志、IP Helper TCP 表和 Ratatui/Crossterm；监控器按需启动，不会进入服务进程。
+服务使用 Windows Event Log、Firewall COM 和 Windows Service API。监控器使用 Security/RdpCoreTS 历史事件与 Ratatui/Crossterm，只按需运行，不查询实时 TCP 连接。
 
 ## 发布
 
-Cargo 版本与 Git 标签必须一致：
+Cargo 版本、在线脚本内的 `$ReleaseTag` 与 Git 标签必须一致：
 
 ```powershell
-git tag -a v0.3.1 -m "RdpGuard v0.3.1"
 git push origin main
-git push origin v0.3.1
+git tag -a v0.3.2 -m "RdpGuard v0.3.2"
+git push origin v0.3.2
 ```
 
-Release 工作流会在 Windows runner 上重新执行格式检查、Clippy、测试和 release 构建，然后发布 ZIP 与 `SHA256SUMS.txt`。
+Release 工作流重新执行格式检查、Clippy、Rust/PowerShell 测试和 release 构建，然后发布：
 
-发布 ZIP 包含：
+- `RdpGuard-Rust-v0.3.2.zip`
+- `SHA256SUMS.txt`
+- `Install-RdpGuard-Online.ps1`
 
-- `rdpguard.exe`
-- `rdpguard-monitor.exe`
-- 安装器、卸载器和默认配置
-- README、更新记录、许可证、测试摘要和本高级文档
+ZIP 包含两个 EXE、在线/本地安装器、卸载器、默认配置和文档。`releases/latest/download/Install-RdpGuard-Online.ps1` 指向最新正式版入口；脚本内嵌自身标签，直接下载同标签 ZIP 和校验文件，不依赖 GitHub API 限额。
 
 ## 数据与权限
 
 - 安装目录默认只允许 SYSTEM 和本机管理员访问。
 - 监控器只在内存中汇总事件，不保存用户名或登录历史。
-- 单个数据源每次最多读取 50,000 条事件，超过时在界面提示结果已截断。
-- Security 日志不可用时，监控器仍会尝试显示防护失败、封禁状态和当前 RDP TCP 连接。
+- 单个事件源每次最多读取 50,000 条，超过时提示结果已截断。
+- Security 日志不可用时，监控器仍会尝试显示 RdpCoreTS 防护历史和现有封禁状态。

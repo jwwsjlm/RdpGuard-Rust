@@ -169,7 +169,7 @@ pub struct MonitorWarning {
 }
 ```
 
-Remove RDP port and connection methods from `MonitorSources` and `WindowsMonitorSources`. Delete the connections module and tests. Remove now-unused IpHelper, WinSock and Registry windows-sys features.
+Remove RDP port and connection methods from `MonitorSources` and `WindowsMonitorSources`. Delete the connections module and tests. Remove the now-unused IpHelper and WinSock windows-sys features; retain Registry because windows-sys gates the `SHELLEXECUTEINFOW` definition used by the waitable UAC path behind that feature.
 
 - [ ] **Step 4: Run GREEN, search and commit**
 
@@ -339,7 +339,7 @@ Expected: missing script/workflow entries fail.
 
 - [ ] **Step 3: Implement verified acquisition**
 
-Use fixed repository `jwwsjlm/RdpGuard-Rust` and `/releases/latest`. Validate `tag_name` with `^v[0-9]+\.[0-9]+\.[0-9]+$`; require exactly one `RdpGuard-Rust-$tag.zip` and one `SHA256SUMS.txt`. Accept only HTTPS asset URLs hosted by GitHub download infrastructure. Enable TLS 1.2 without disabling newer protocols. Download to a GUID directory under system TEMP, strictly parse one 64-hex checksum line for the expected ZIP, compare `Get-FileHash`, then extract. Require one package root containing both EXEs, both installers and `config.json`.
+Use fixed repository `jwwsjlm/RdpGuard-Rust` and an embedded `$ReleaseTag = 'v0.3.2'`. The stable `/releases/latest/download/Install-RdpGuard-Online.ps1` URL supplies the newest script, and that script downloads the ZIP/checksum from its own tag without consuming unauthenticated GitHub API quota or racing a latest-tag change. Validate the tag with `^v[0-9]+\.[0-9]+\.[0-9]+$` and accept only HTTPS asset URLs hosted by GitHub download infrastructure. Enable TLS 1.2 without disabling newer protocols. Download to a GUID directory under system TEMP, strictly parse one 64-hex checksum line for the expected ZIP, compare `Get-FileHash`, then extract. Require one package root containing both EXEs, both installers and `config.json`.
 
 - [ ] **Step 4: Implement menu and delegated actions**
 

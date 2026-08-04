@@ -60,8 +60,8 @@ RdpGuard
 执行流程：
 
 1. 确认运行环境为 Windows PowerShell，并启用 TLS 1.2。
-2. 通过 GitHub API 查询 `jwwsjlm/RdpGuard-Rust` 的最新正式 Release。
-3. 验证标签符合 `v<主版本>.<次版本>.<修订版本>`，并定位名称严格匹配该标签的 ZIP 以及 `SHA256SUMS.txt`。
+2. 校验在线脚本内嵌的正式标签符合 `v<主版本>.<次版本>.<修订版本>`；稳定的 `releases/latest/download` 入口会让最新版脚本与自身标签保持一致。
+3. 直接构造该标签的 GitHub Release ZIP 与 `SHA256SUMS.txt` 下载地址，避免未认证 GitHub API 限流和“latest”切换竞态。
 4. 在系统临时目录下创建随机子目录并下载两个文件。
 5. 严格解析校验文件，只接受目标 ZIP 对应的 64 位十六进制 SHA-256。
 6. 使用 `Get-FileHash` 计算下载文件哈希并进行不区分大小写的完整比较。
