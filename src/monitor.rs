@@ -30,8 +30,21 @@ pub struct GuardFailureEvent {
 pub struct TcpConnection {
     pub remote_ip: IpAddr,
     pub local_port: u16,
+    pub remote_port: u16,
     pub state: String,
     pub pid: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MonitorSnapshot {
+    pub summaries: Vec<IpSummary>,
+    pub auth_events: Vec<AuthEvent>,
+    pub connections: Vec<TcpConnection>,
+    pub warnings: Vec<String>,
+    pub auth_truncated: bool,
+    pub guard_truncated: bool,
+    pub rdp_port: u16,
+    pub refreshed_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

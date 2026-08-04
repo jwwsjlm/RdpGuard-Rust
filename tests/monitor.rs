@@ -174,6 +174,7 @@ fn guard_failures_do_not_double_count_auth_attempts() {
     let connections = [TcpConnection {
         remote_ip: "203.0.113.10".parse().unwrap(),
         local_port: 3389,
+        remote_port: 50_000,
         state: "Established".into(),
         pid: 42,
     }];
