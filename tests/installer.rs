@@ -54,6 +54,45 @@ fn installer_rolls_back_binaries_and_configuration_when_upgrade_fails() {
 }
 
 #[test]
+fn installer_pending_binaries_keep_the_windows_executable_extension() {
+    assert!(
+        INSTALLER.contains(
+            "$PendingExecutable = Join-Path $InstallDirectory \"rdpguard.pending.$suffix.exe\""
+        ),
+        "the service preflight copy must end in .exe so PowerShell executes it"
+    );
+    assert!(
+        INSTALLER.contains(
+            "$PendingMonitor = Join-Path $InstallDirectory \"rdpguard-monitor.pending.$suffix.exe\""
+        ),
+        "the monitor preflight copy must end in .exe so PowerShell executes it"
+    );
+    assert!(!INSTALLER.contains("$PendingExecutable = \"$TargetExecutable.pending.$suffix\""));
+    assert!(!INSTALLER.contains("$PendingMonitor = \"$TargetMonitor.pending.$suffix\""));
+}
+
+#[test]
+fn installer_preflight_errors_report_native_process_diagnostics_once() {
+    for required in [
+        "Invoke-ExecutablePreflight",
+        "path=",
+        "exit_code=",
+        "start_error=",
+        "output=",
+        "Add-RdpGuardErrorCode",
+    ] {
+        assert!(
+            INSTALLER.contains(required),
+            "installer preflight errors are missing diagnostic field: {required}"
+        );
+    }
+    assert!(
+        !INSTALLER.contains("throw \"UPGRADE001: $($failure.Exception.Message) Previous installation was restored.\""),
+        "rollback must not prepend UPGRADE001 when the original error already has that code"
+    );
+}
+
+#[test]
 fn installer_copies_the_read_only_monitor() {
     for required in [
         "$SourceMonitor",

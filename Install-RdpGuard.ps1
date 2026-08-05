@@ -344,6 +344,49 @@ function Get-ServiceStartModeArgument {
     }
 }
 
+function Add-RdpGuardErrorCode {
+    param(
+        [Parameter(Mandatory)][string]$Code,
+        [Parameter(Mandatory)][string]$Message
+    )
+    if ($Message -match '^[A-Z][A-Z0-9_]*[0-9]{3}:') { return $Message }
+    return "${Code}: $Message"
+}
+
+function Invoke-ExecutablePreflight {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ExpectedVersion,
+        [Parameter(Mandatory)][string]$Component
+    )
+
+    $output = @()
+    $exitCode = $null
+    $startError = $null
+    $previousExitCode = $global:LASTEXITCODE
+    try {
+        $global:LASTEXITCODE = $null
+        try {
+            $output = @(& $Path --version 2>&1)
+            $exitCode = $global:LASTEXITCODE
+        } catch {
+            $startError = $_.Exception.Message
+            $exitCode = $global:LASTEXITCODE
+        }
+    } finally {
+        $global:LASTEXITCODE = $previousExitCode
+    }
+
+    $outputText = (($output | ForEach-Object { [string]$_ }) -join ' ').Trim()
+    $exitCodeText = if ($null -eq $exitCode) { '<not-set>' } else { [string]$exitCode }
+    $startErrorText = if ([string]::IsNullOrWhiteSpace($startError)) { '<none>' } else { $startError.Replace("`r", ' ').Replace("`n", ' ') }
+    $shownOutput = if ([string]::IsNullOrWhiteSpace($outputText)) { '<empty>' } else { $outputText }
+    if ($null -ne $startError -or $exitCode -ne 0 -or $outputText -ne $ExpectedVersion) {
+        $message = "New $Component executable preflight failed: path=$Path; exit_code=$exitCodeText; start_error=$startErrorText; output=$shownOutput; expected=$ExpectedVersion"
+        throw (Add-RdpGuardErrorCode -Code 'UPGRADE001' -Message $message)
+    }
+}
+
 function Restore-ServiceConfiguration {
     param(
         [Parameter(Mandatory)]$OriginalService,
@@ -417,8 +460,8 @@ $SourceConfig = Join-Path $PSScriptRoot 'config.json'
 $suffix = "$PID.$([Guid]::NewGuid().ToString('N'))"
 $PendingConfig = "$TargetConfig.pending.$suffix"
 $BackupConfig = "$TargetConfig.backup.$suffix"
-$PendingExecutable = "$TargetExecutable.pending.$suffix"
-$PendingMonitor = "$TargetMonitor.pending.$suffix"
+$PendingExecutable = Join-Path $InstallDirectory "rdpguard.pending.$suffix.exe"
+$PendingMonitor = Join-Path $InstallDirectory "rdpguard-monitor.pending.$suffix.exe"
 $PreflightState = "$TargetState.preflight.$suffix"
 $BackupExecutable = "$TargetExecutable.backup.$suffix"
 $BackupMonitor = "$TargetMonitor.backup.$suffix"
@@ -460,14 +503,8 @@ try {
 
     Copy-Item -LiteralPath $SourceExecutable -Destination $PendingExecutable -Force
     Copy-Item -LiteralPath $SourceMonitor -Destination $PendingMonitor -Force
-    $serviceVersion = & $PendingExecutable --version 2>&1
-    if ($LASTEXITCODE -ne 0 -or ($serviceVersion -join ' ') -notmatch '^rdpguard 0\.4\.1$') {
-        throw "UPGRADE001: New service executable preflight failed: $($serviceVersion -join ' ')"
-    }
-    $monitorVersion = & $PendingMonitor --version 2>&1
-    if ($LASTEXITCODE -ne 0 -or ($monitorVersion -join ' ') -notmatch '^rdpguard-monitor 0\.4\.1$') {
-        throw "UPGRADE001: New monitor executable preflight failed: $($monitorVersion -join ' ')"
-    }
+    Invoke-ExecutablePreflight -Path $PendingExecutable -ExpectedVersion 'rdpguard 0.4.2' -Component 'service'
+    Invoke-ExecutablePreflight -Path $PendingMonitor -ExpectedVersion 'rdpguard-monitor 0.4.2' -Component 'monitor'
 
     $json = $selectedConfig | ConvertTo-Json -Depth 3
     [IO.File]::WriteAllText($PendingConfig, $json, [Text.UTF8Encoding]::new($false))
@@ -535,9 +572,11 @@ try {
         }
     } catch {
         $preserveBackups = $true
-        throw "UPGRADE001: $($failure.Exception.Message) Rollback also failed: $($_.Exception.Message)"
+        $rollbackFailure = "$($failure.Exception.Message) Rollback also failed: $($_.Exception.Message)"
+        throw (Add-RdpGuardErrorCode -Code 'UPGRADE001' -Message $rollbackFailure)
     }
-    throw "UPGRADE001: $($failure.Exception.Message) Previous installation was restored."
+    $restoredFailure = "$($failure.Exception.Message) Previous installation was restored."
+    throw (Add-RdpGuardErrorCode -Code 'UPGRADE001' -Message $restoredFailure)
 } finally {
     foreach ($pending in @($PendingExecutable, $PendingMonitor, $PendingConfig, $PreflightState)) {
         if (Test-Path -LiteralPath $pending) { Remove-Item -LiteralPath $pending -Force }

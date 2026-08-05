@@ -82,4 +82,7 @@ Assert-Equal (Get-ServiceStartModeArgument -StartMode Manual -DelayedAutoStart $
 Assert-Equal (Get-ServiceStartModeArgument -StartMode Disabled -DelayedAutoStart $false) 'disabled'
 Assert-Throws { Get-ServiceStartModeArgument -StartMode Unknown -DelayedAutoStart $false }
 
+Assert-Equal (Add-RdpGuardErrorCode -Code 'UPGRADE001' -Message 'preflight failed') 'UPGRADE001: preflight failed'
+Assert-Equal (Add-RdpGuardErrorCode -Code 'UPGRADE001' -Message 'UPGRADE001: preflight failed') 'UPGRADE001: preflight failed'
+
 Write-Output 'Installer configuration tests passed.'
