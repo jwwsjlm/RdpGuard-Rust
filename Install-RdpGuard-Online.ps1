@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $Repository = 'jwwsjlm/RdpGuard-Rust'
-$ReleaseTag = 'v0.4.3'
+$ReleaseTag = 'v0.4.4'
 
 function ConvertFrom-OnlineUtf8Base64 {
     param([Parameter(Mandatory)][string]$Value)
@@ -34,7 +34,7 @@ function Get-OnlineText {
         Install = @((ConvertFrom-OnlineUtf8Base64 'WzFdIOWuieijheaIlumFjee9rumYsuaKpOacjeWKoQ=='), '[1] Install or configure protection service')
         History = @((ConvertFrom-OnlineUtf8Base64 'WzJdIOafpeeci+WOhuWPsueZu+W9leaXpeW/lw=='), '[2] View historical login logs')
         Language = @('[3] English', (ConvertFrom-OnlineUtf8Base64 'WzNdIOS4reaWhw=='))
-        Doctor = @((ConvertFrom-OnlineUtf8Base64 'WzRdIOi/kOihjOiviuWIsA=='), '[4] Run diagnostics')
+        Doctor = @((ConvertFrom-OnlineUtf8Base64 'WzRdIOi/kOihjOiviuaWrQ=='), '[4] Run diagnostics')
         Exit = @((ConvertFrom-OnlineUtf8Base64 'WzBdIOmAgOWHug=='), '[0] Exit')
         Choice = @((ConvertFrom-OnlineUtf8Base64 '6K+36YCJ5oup'), 'Select an option')
         InvalidChoice = @((ConvertFrom-OnlineUtf8Base64 '5peg5pWI6YCJ6aG577yM6K+36L6T5YWlIDDjgIEK44CBMuOAgTPmiJYgNOOAgg=='), 'Invalid option. Enter 0, 1, 2, 3 or 4.')
@@ -45,6 +45,10 @@ function Get-OnlineText {
         MonitorFailed = @((ConvertFrom-OnlineUtf8Base64 '5Y6G5Y+y5pel5b+X55uR5o6n5Zmo6L+U5Zue5aSx6LSl54q25oCB'), 'History monitor returned a failure status')
         DoctorFailed = @((ConvertFrom-OnlineUtf8Base64 '6K+K5pat5Y+R546w6ZyA6KaB5aSE55CG55qE'), 'Diagnostics found items that need attention')
         ElevationFailed = @((ConvertFrom-OnlineUtf8Base64 '566h55CG5ZGY5p2D6ZmQ6K+35rGC5aSx6LSl5oiW5Y+W5raI'), 'Administrator elevation failed or was cancelled')
+        InstallComplete = @((ConvertFrom-OnlineUtf8Base64 '6YWN572u5a6M5oiQ77yMUmRwR3VhcmQg6Ziy5oqk5pyN5Yqh5q2j5Zyo6L+Q6KGM44CC'), 'Configuration complete. The RdpGuard protection service is running.')
+        MonitorOpening = @((ConvertFrom-OnlineUtf8Base64 '5q2j5Zyo5omT5byA5Y6G5Y+y55m75b2V5pel5b+X56qX5Y+jLi4u'), 'Opening the historical login log window...')
+        MonitorClosed = @((ConvertFrom-OnlineUtf8Base64 '5Y6G5Y+y5pel5b+X56qX5Y+j5bey5YWz6Zet44CC'), 'The historical login log window has closed.')
+        DoctorComplete = @((ConvertFrom-OnlineUtf8Base64 '6K+K5pat5bey5a6M5oiQ44CC'), 'Diagnostics complete.')
     }
     if (-not $messages.ContainsKey($Key)) { throw "Unknown message key: $Key" }
     if ($Language -eq 'zh-CN') { return $messages[$Key][0] }
@@ -210,8 +214,9 @@ function Invoke-ProtectedOnlineAction {
                 if ($LASTEXITCODE -ne 0) { throw "$(Get-OnlineText $SelectedLanguage InstallFailed): $LASTEXITCODE" }
             }
             'monitor' {
-                & (Join-Path $bundle.Root 'rdpguard-monitor.exe') --language $SelectedLanguage
-                if ($LASTEXITCODE -ne 0) { throw "$(Get-OnlineText $SelectedLanguage MonitorFailed): $LASTEXITCODE" }
+                $monitor = Join-Path $bundle.Root 'rdpguard-monitor.exe'
+                $monitorProcess = Start-Process -FilePath $monitor -ArgumentList @('--language', $SelectedLanguage) -WorkingDirectory $bundle.Root -Wait -PassThru
+                if ($monitorProcess.ExitCode -ne 0) { throw "$(Get-OnlineText $SelectedLanguage MonitorFailed): $($monitorProcess.ExitCode)" }
             }
             'doctor' {
                 $diagnostic = Join-Path $env:ProgramData 'RdpGuard\rdpguard.exe'
@@ -232,8 +237,12 @@ function Invoke-ElevatedOnlineAction {
         [Parameter(Mandatory)][ValidateSet('install', 'monitor', 'doctor')][string]$Action,
         [Parameter(Mandatory)][ValidateSet('zh-CN', 'en-US')][string]$SelectedLanguage
     )
+    if ($Action -eq 'monitor') {
+        Write-Host (Get-OnlineText $SelectedLanguage MonitorOpening) -ForegroundColor Cyan
+    }
     if (Test-OnlineAdministrator) {
         Invoke-ProtectedOnlineAction $Action $SelectedLanguage
+        Write-OnlineActionComplete $Action $SelectedLanguage
         return
     }
     $launcherUri = "https://raw.githubusercontent.com/$Repository/$ReleaseTag/Install-RdpGuard-Online.ps1"
@@ -251,6 +260,20 @@ function Invoke-ElevatedOnlineAction {
         throw "$(Get-OnlineText $SelectedLanguage ElevationFailed): $($_.Exception.Message)"
     }
     if ($process.ExitCode -ne 0) { throw "$(Get-OnlineText $SelectedLanguage OperationFailed): exit code $($process.ExitCode)" }
+    Write-OnlineActionComplete $Action $SelectedLanguage
+}
+
+function Write-OnlineActionComplete {
+    param(
+        [Parameter(Mandatory)][ValidateSet('install', 'monitor', 'doctor')][string]$Action,
+        [Parameter(Mandatory)][ValidateSet('zh-CN', 'en-US')][string]$SelectedLanguage
+    )
+    $key = switch ($Action) {
+        'install' { 'InstallComplete' }
+        'monitor' { 'MonitorClosed' }
+        'doctor' { 'DoctorComplete' }
+    }
+    Write-Host (Get-OnlineText $SelectedLanguage $key) -ForegroundColor Green
 }
 
 function Invoke-RdpGuardMenuChoice {

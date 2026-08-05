@@ -1,4 +1,4 @@
-# RdpGuard v0.4.3 验收摘要
+# RdpGuard v0.4.4 验收摘要
 
 验收日期：2026-08-05
 
@@ -25,11 +25,12 @@
 
 - Rust 测试覆盖配置迁移、CIDR、IP 规范化、递增/重置、状态隔离、事件故障解封、规则对账、部分失败、监控器和诊断 CLI。
 - Windows PowerShell 5.1 测试覆盖双语配置、在线菜单、三架构资源名、LF/CRLF 哈希和安全清理。
+- 在线监控器使用独立可见控制台，测试覆盖启动方式、退出码等待、中英文进度与完成反馈。
 - CI 执行格式、Clippy、全部测试、三架构 release 构建与 PE Machine 校验、cargo audit/deny、CodeQL 和 Actionlint。
 
 ## 发布校验
 
-每个架构 ZIP 内两个 EXE 的 `--version` 必须为 `0.4.3`。Release 同时提供 SHA-256、CycloneDX SBOM 和 GitHub build provenance；ARM64 无原生 runner 时执行交叉构建与 PE 校验。
+每个架构 ZIP 内两个 EXE 的 `--version` 必须为 `0.4.4`。Release 同时提供 SHA-256、CycloneDX SBOM 和 GitHub build provenance；ARM64 无原生 runner 时执行交叉构建与 PE 校验。
 
 ## Windows 实机验收
 

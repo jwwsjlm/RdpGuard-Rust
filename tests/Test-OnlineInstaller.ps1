@@ -37,6 +37,13 @@ Assert-Equal (Resolve-RdpGuardLanguage -Language auto -UiCulture 'zh-CN') 'zh-CN
 Assert-Equal (Resolve-RdpGuardLanguage -Language auto -UiCulture 'en-US') 'en-US'
 Assert-Equal ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Get-OnlineText -Language 'zh-CN' -Key Title)))) 'UmRwR3VhcmQg5Zyo57q/5bel5YW3'
 Assert-True ((Get-OnlineText -Language 'zh-CN' -Key InvalidChoice).Length -gt 0) 'Chinese invalid-choice text must exist'
+Assert-Equal (Get-OnlineText -Language 'zh-CN' -Key Doctor) (ConvertFrom-OnlineUtf8Base64 'WzRdIOi/kOihjOiviuaWrQ==')
+Assert-Equal (Get-OnlineText -Language 'zh-CN' -Key InstallComplete) (ConvertFrom-OnlineUtf8Base64 '6YWN572u5a6M5oiQ77yMUmRwR3VhcmQg6Ziy5oqk5pyN5Yqh5q2j5Zyo6L+Q6KGM44CC')
+Assert-Equal (Get-OnlineText -Language 'zh-CN' -Key MonitorOpening) (ConvertFrom-OnlineUtf8Base64 '5q2j5Zyo5omT5byA5Y6G5Y+y55m75b2V5pel5b+X56qX5Y+jLi4u')
+Assert-Equal (Get-OnlineText -Language 'zh-CN' -Key MonitorClosed) (ConvertFrom-OnlineUtf8Base64 '5Y6G5Y+y5pel5b+X56qX5Y+j5bey5YWz6Zet44CC')
+Assert-True $onlineSource.Contains('Start-Process -FilePath $monitor') 'monitor must run in a separate visible console process'
+Assert-True $onlineSource.Contains('-Wait -PassThru') 'monitor launcher must wait and report its exit status'
+Assert-True (-not $onlineSource.Contains("& (Join-Path `$bundle.Root 'rdpguard-monitor.exe')")) 'monitor must not share the temporary elevated PowerShell console'
 $archiveName = "RdpGuard-Rust-$ReleaseTag-windows-$(Get-NativeRdpGuardArchitecture).zip"
 $hash = 'a' * 64
 Assert-Equal (Get-ExpectedArchiveHash -ChecksumText "$hash  $archiveName`n" -ArchiveName $archiveName) $hash

@@ -1,6 +1,6 @@
 [package]
 name = "rdpguard"
-version = "0.4.3"
+version = "0.4.4"
 edition = "2024"
 description = "Temporary Windows Firewall blocking for repeated RDP authentication failures"
 license = "MIT"

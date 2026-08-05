@@ -557,8 +557,8 @@ try {
 
     Copy-Item -LiteralPath $SourceExecutable -Destination $PendingExecutable -Force
     Copy-Item -LiteralPath $SourceMonitor -Destination $PendingMonitor -Force
-    Invoke-ExecutablePreflight -Path $PendingExecutable -ExpectedVersion 'rdpguard 0.4.3' -Component 'service'
-    Invoke-ExecutablePreflight -Path $PendingMonitor -ExpectedVersion 'rdpguard-monitor 0.4.3' -Component 'monitor'
+    Invoke-ExecutablePreflight -Path $PendingExecutable -ExpectedVersion 'rdpguard 0.4.4' -Component 'service'
+    Invoke-ExecutablePreflight -Path $PendingMonitor -ExpectedVersion 'rdpguard-monitor 0.4.4' -Component 'monitor'
 
     $json = $selectedConfig | ConvertTo-Json -Depth 3
     [IO.File]::WriteAllText($PendingConfig, $json, [Text.UTF8Encoding]::new($false))
