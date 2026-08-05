@@ -344,6 +344,60 @@ function Get-ServiceStartModeArgument {
     }
 }
 
+function Start-RdpGuardServiceBounded {
+    param(
+        [Parameter(Mandatory)][string]$ServiceName,
+        [int]$TimeoutSeconds = 30
+    )
+
+    try {
+        Invoke-ServiceControl -Arguments @('start', $ServiceName)
+    } catch {
+        throw "SVC002: Failed to request service start. $($_.Exception.Message)"
+    }
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $service = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'"
+        if ($null -eq $service) { throw "SVC002: Service $ServiceName no longer exists." }
+        if ($service.State -eq 'Running') { return }
+        if ($service.State -eq 'Stopped') {
+            throw "SVC002: Service stopped during initialization (ExitCode=$($service.ExitCode), ServiceSpecificExitCode=$($service.ServiceSpecificExitCode)). Check C:\ProgramData\RdpGuard\rdpguard.log."
+        }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    throw "SVC003: Timed out after $TimeoutSeconds seconds waiting for service startup (State=$($service.State), ProcessId=$($service.ProcessId)). Check C:\ProgramData\RdpGuard\rdpguard.log."
+}
+
+function Stop-RdpGuardServiceBounded {
+    param(
+        [Parameter(Mandatory)][string]$ServiceName,
+        [int]$TimeoutSeconds = 30
+    )
+
+    $service = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
+    if ($null -eq $service -or $service.State -eq 'Stopped') { return }
+    $stopOutput = & "$env:SystemRoot\System32\sc.exe" stop $ServiceName 2>&1
+    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1061 -and $LASTEXITCODE -ne 1062) {
+        throw "SVC004: Failed to request service stop ($LASTEXITCODE): $($stopOutput -join ' ')"
+    }
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $service = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
+        if ($null -eq $service -or $service.State -eq 'Stopped') { return }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    if ([int64]$service.ProcessId -gt 0) {
+        Stop-Process -Id ([int]$service.ProcessId) -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 250
+        $service = Get-CimInstance -ClassName Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
+    }
+    if ($null -ne $service -and $service.State -ne 'Stopped') {
+        throw "SVC004: Service did not stop within $TimeoutSeconds seconds (State=$($service.State), ProcessId=$($service.ProcessId))."
+    }
+}
+
 function Add-RdpGuardErrorCode {
     param(
         [Parameter(Mandatory)][string]$Code,
@@ -503,8 +557,8 @@ try {
 
     Copy-Item -LiteralPath $SourceExecutable -Destination $PendingExecutable -Force
     Copy-Item -LiteralPath $SourceMonitor -Destination $PendingMonitor -Force
-    Invoke-ExecutablePreflight -Path $PendingExecutable -ExpectedVersion 'rdpguard 0.4.2' -Component 'service'
-    Invoke-ExecutablePreflight -Path $PendingMonitor -ExpectedVersion 'rdpguard-monitor 0.4.2' -Component 'monitor'
+    Invoke-ExecutablePreflight -Path $PendingExecutable -ExpectedVersion 'rdpguard 0.4.3' -Component 'service'
+    Invoke-ExecutablePreflight -Path $PendingMonitor -ExpectedVersion 'rdpguard-monitor 0.4.3' -Component 'monitor'
 
     $json = $selectedConfig | ConvertTo-Json -Depth 3
     [IO.File]::WriteAllText($PendingConfig, $json, [Text.UTF8Encoding]::new($false))
@@ -516,8 +570,7 @@ try {
     if ($hadPreviousConfig) { Copy-Item -LiteralPath $TargetConfig -Destination $BackupConfig -Force }
 
     if ($serviceWasRunning) {
-        Stop-Service -Name $ServiceName -Force
-        (Get-Service -Name $ServiceName).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
+        Stop-RdpGuardServiceBounded -ServiceName $ServiceName
     }
 
     $replacementStarted = $true
@@ -536,13 +589,11 @@ try {
         $serviceCreated = $true
     }
     Invoke-ServiceControl -Arguments @('description', $ServiceName, 'Temporarily blocks IPs with repeated failed RDP authentication attempts.')
+    Invoke-ServiceControl -Arguments @('failureflag', $ServiceName, '0')
+
+    Start-RdpGuardServiceBounded -ServiceName $ServiceName
     Invoke-ServiceControl -Arguments @('failure', $ServiceName, 'reset=', '86400', 'actions=', 'restart/5000/restart/30000/restart/60000')
     Invoke-ServiceControl -Arguments @('failureflag', $ServiceName, '1')
-
-    Start-Service -Name $ServiceName
-    $service = Get-Service -Name $ServiceName
-    $service.WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
-    if ($service.Status -ne 'Running') { throw 'UPGRADE001: Service did not report a healthy Running state.' }
     foreach ($backup in @($BackupExecutable, $BackupMonitor, $BackupConfig)) {
         if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
     }
@@ -551,8 +602,7 @@ try {
     try {
         $currentService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
         if ($currentService -and $currentService.Status -ne 'Stopped') {
-            Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-            $currentService.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
+            Stop-RdpGuardServiceBounded -ServiceName $ServiceName
         }
         if ($replacementStarted) {
             foreach ($target in @($TargetExecutable, $TargetMonitor, $TargetConfig)) {
@@ -565,8 +615,7 @@ try {
         if ($serviceCreated) { Invoke-ServiceControl -Arguments @('delete', $ServiceName) }
         elseif ($serviceWasRunning) {
             Restore-ServiceConfiguration $originalService $originalDelayedAutoStart
-            Start-Service -Name $ServiceName
-            (Get-Service -Name $ServiceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
+            Start-RdpGuardServiceBounded -ServiceName $ServiceName
         } elseif ($hadService) {
             Restore-ServiceConfiguration $originalService $originalDelayedAutoStart
         }

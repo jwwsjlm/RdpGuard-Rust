@@ -70,27 +70,27 @@ cargo build --release --locked
 标签必须与 Cargo 版本及在线脚本 `$ReleaseTag` 一致：
 
 ```powershell
-git tag -a v0.4.2 -m "RdpGuard v0.4.2"
-git push origin main v0.4.2
+git tag -a v0.4.3 -m "RdpGuard v0.4.3"
+git push origin main v0.4.3
 ```
 
 Release 包：
 
-- `RdpGuard-Rust-v0.4.2-windows-x64.zip`
-- `RdpGuard-Rust-v0.4.2-windows-arm64.zip`
-- `RdpGuard-Rust-v0.4.2-windows-x86.zip`
+- `RdpGuard-Rust-v0.4.3-windows-x64.zip`
+- `RdpGuard-Rust-v0.4.3-windows-arm64.zip`
+- `RdpGuard-Rust-v0.4.3-windows-x86.zip`
 - 每架构 CycloneDX JSON SBOM
 - `SHA256SUMS.txt` 和 GitHub build provenance
 
 校验哈希：
 
 ```powershell
-Get-FileHash .\RdpGuard-Rust-v0.4.2-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\RdpGuard-Rust-v0.4.3-windows-x64.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS.txt
 ```
 
 校验 GitHub 构建证明（需 GitHub CLI）：
 
 ```powershell
-gh attestation verify .\RdpGuard-Rust-v0.4.2-windows-x64.zip --repo jwwsjlm/RdpGuard-Rust
+gh attestation verify .\RdpGuard-Rust-v0.4.3-windows-x64.zip --repo jwwsjlm/RdpGuard-Rust
 ```

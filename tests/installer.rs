@@ -54,6 +54,28 @@ fn installer_rolls_back_binaries_and_configuration_when_upgrade_fails() {
 }
 
 #[test]
+fn installer_starts_and_stops_services_with_bounded_polling() {
+    for required in [
+        "Start-RdpGuardServiceBounded",
+        "Stop-RdpGuardServiceBounded",
+        "Invoke-ServiceControl -Arguments @('start', $ServiceName)",
+        "SVC002:",
+        "SVC003:",
+        "$LASTEXITCODE -ne 1061",
+        "Start-Sleep -Milliseconds 250",
+    ] {
+        assert!(
+            INSTALLER.contains(required),
+            "installer is missing bounded service control behavior: {required}"
+        );
+    }
+    assert!(
+        !INSTALLER.contains("Start-Service -Name $ServiceName"),
+        "Start-Service can block indefinitely while SCM reports START_PENDING"
+    );
+}
+
+#[test]
 fn installer_pending_binaries_keep_the_windows_executable_extension() {
     assert!(
         INSTALLER.contains(

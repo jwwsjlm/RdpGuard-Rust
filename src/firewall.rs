@@ -54,7 +54,7 @@ pub fn format_rule_metadata(rule: &ManagedRule) -> String {
         BlockScope::RdpOnly => "rdp_only",
     };
     format!(
-        "RdpGuard:v2|ip={}|expires={}|failures={}|repeat={}|scope={}|port={}",
+        "RdpGuard:v2;ip={};expires={};failures={};repeat={};scope={};port={}",
         rule.ip,
         rule.expires_at.to_rfc3339(),
         rule.failures,
@@ -66,9 +66,19 @@ pub fn format_rule_metadata(rule: &ManagedRule) -> String {
 }
 
 pub fn parse_rule_metadata(value: &str) -> Option<ManagedRule> {
-    let fields = value.strip_prefix("RdpGuard:v2|")?;
+    // The Windows Firewall rule store rejects pipe characters in Description
+    // with E_INVALIDARG. Accept the prerelease pipe-delimited representation for
+    // recovery, but only emit the semicolon-delimited form above.
+    let (fields, separator) = value
+        .strip_prefix("RdpGuard:v2;")
+        .map(|fields| (fields, ';'))
+        .or_else(|| {
+            value
+                .strip_prefix("RdpGuard:v2|")
+                .map(|fields| (fields, '|'))
+        })?;
     let mut values = std::collections::HashMap::new();
-    for field in fields.split('|') {
+    for field in fields.split(separator) {
         let (name, value) = field.split_once('=')?;
         values.insert(name, value);
     }

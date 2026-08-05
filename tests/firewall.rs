@@ -28,8 +28,19 @@ fn managed_rule_metadata_round_trips_for_state_recovery() {
         repeat_count: 3,
     };
     let metadata = format_rule_metadata(&rule);
-    assert!(metadata.starts_with("RdpGuard:v2|"));
-    assert_eq!(parse_rule_metadata(&metadata), Some(rule));
+    assert!(metadata.starts_with("RdpGuard:v2;"));
+    assert!(
+        !metadata.contains('|'),
+        "Windows Firewall rejects descriptions containing a pipe character"
+    );
+    assert_eq!(parse_rule_metadata(&metadata), Some(rule.clone()));
+    assert_eq!(
+        parse_rule_metadata(
+            "RdpGuard:v2|ip=203.0.113.8|expires=2026-08-05T12:00:00+00:00|failures=17|repeat=3|scope=rdp_only|port=3390"
+        ),
+        Some(rule),
+        "rules written by prerelease v2 builds remain readable"
+    );
     assert_eq!(
         parse_rule_metadata("Automatically blocked by RdpGuard"),
         None

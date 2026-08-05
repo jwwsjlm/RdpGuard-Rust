@@ -11,7 +11,7 @@ use windows_service::{
         ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
         ServiceType,
     },
-    service_control_handler::{self, ServiceControlHandlerResult},
+    service_control_handler::{self, ServiceControlHandlerResult, ServiceStatusHandle},
     service_dispatcher,
 };
 
@@ -61,6 +61,7 @@ fn run_service(paths: &AppPaths) -> Result<()> {
             process_id: None,
         })
         .context("failed to report pending service status")?;
+    let mut startup_guard = StartupFailureGuard::new(&status);
 
     let firewall_policy = firewall_policy_status().context("FW001: firewall preflight failed")?;
     if firewall_policy.disabled_profiles != 0 {
@@ -90,6 +91,7 @@ fn run_service(paths: &AppPaths) -> Result<()> {
             process_id: None,
         })
         .context("failed to report running service status")?;
+    startup_guard.disarm();
 
     let config = Config::load(&paths.config)?;
     let heartbeat_interval = Duration::from_secs(config.heartbeat_minutes.saturating_mul(60));
@@ -178,6 +180,44 @@ fn run_service(paths: &AppPaths) -> Result<()> {
         })
         .context("failed to report stopped service status")?;
     Ok(())
+}
+
+struct StartupFailureGuard<'a> {
+    status: &'a ServiceStatusHandle,
+    armed: bool,
+}
+
+impl<'a> StartupFailureGuard<'a> {
+    fn new(status: &'a ServiceStatusHandle) -> Self {
+        Self {
+            status,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for StartupFailureGuard<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = report_service_failure(self.status);
+        }
+    }
+}
+
+fn report_service_failure(status: &ServiceStatusHandle) -> windows_service::Result<()> {
+    status.set_service_status(ServiceStatus {
+        service_type: SERVICE_TYPE,
+        current_state: ServiceState::Stopped,
+        controls_accepted: ServiceControlAccept::empty(),
+        exit_code: ServiceExitCode::ServiceSpecific(1),
+        checkpoint: 0,
+        wait_hint: Duration::ZERO,
+        process_id: None,
+    })
 }
 
 fn log_health(

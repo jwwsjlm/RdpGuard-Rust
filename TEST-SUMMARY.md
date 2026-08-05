@@ -1,4 +1,4 @@
-# RdpGuard v0.4.2 验收摘要
+# RdpGuard v0.4.3 验收摘要
 
 验收日期：2026-08-05
 
@@ -18,6 +18,8 @@
 - `doctor` 支持中英文文本、JSON 和 0/1/2 退出码。
 - 历史监控器按需读取；Security/RdpCoreTS/状态/防火墙数据源相互独立，并以实际规则显示封禁状态。
 - 白名单建议只接受 WTS 中已认证活动 RDP 会话；旧规则的未知到期时间不会显示成 1970 年。
+- 防火墙规则元数据不含 Windows 拒绝的 `|` 字符，并兼容读取旧格式；初始化失败会向 SCM 报告 `Stopped`。
+- 安装器的服务启停均使用有界轮询，首次健康启动前不会触发失败恢复重启循环。
 
 ## 自动化覆盖
 
@@ -27,4 +29,4 @@
 
 ## 发布校验
 
-每个架构 ZIP 内两个 EXE 的 `--version` 必须为 `0.4.2`。Release 同时提供 SHA-256、CycloneDX SBOM 和 GitHub build provenance；ARM64 无原生 runner 时执行交叉构建与 PE 校验。
+每个架构 ZIP 内两个 EXE 的 `--version` 必须为 `0.4.3`。Release 同时提供 SHA-256、CycloneDX SBOM 和 GitHub build provenance；ARM64 无原生 runner 时执行交叉构建与 PE 校验。
