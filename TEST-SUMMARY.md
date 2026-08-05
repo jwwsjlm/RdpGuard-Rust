@@ -30,3 +30,11 @@
 ## 发布校验
 
 每个架构 ZIP 内两个 EXE 的 `--version` 必须为 `0.4.3`。Release 同时提供 SHA-256、CycloneDX SBOM 和 GitHub build provenance；ARM64 无原生 runner 时执行交叉构建与 PE 校验。
+
+## Windows 实机验收
+
+- Windows Defender 防火墙的 Domain、Private、Public 配置均已启用。
+- RdpGuard 0.4.3 以延迟自动启动方式运行；跨过完整检查周期后仍为 `Running`，PID 未发生重启，退出码为 `0`。
+- 服务成功从状态文件重建 14 条仍然有效的封禁规则；另外 2 条到期规则按设计自动清理。
+- 重建后的规则均为启用状态、入站阻止并应用于所有配置文件，Description 使用 Windows 可接受的分号元数据格式。
+- 正式 x64 ZIP 的 SHA-256 与 `SHA256SUMS.txt` 一致，包内服务程序和监控器均报告 `0.4.3`，GitHub build provenance 验证成功。

@@ -61,6 +61,17 @@ Security 日志无权限时会显示警告，RDP 失败、封禁状态等可用�
 
 服务日志：`C:\ProgramData\RdpGuard\rdpguard.log`。动作和错误立即记录，正常健康心跳默认每小时一次；单文件默认 10 MB，保留 5 个历史文件。
 
+快速确认服务是否正常：
+
+```powershell
+Get-Service RdpGuard
+Get-NetFirewallProfile | Select-Object Name, Enabled
+Get-NetFirewallRule -DisplayName "RdpGuard AutoBlock *" |
+    Select-Object DisplayName, Enabled, Direction, Action, Profile
+```
+
+正常情况下，RdpGuard 应显示 `Running`，正在使用的 Windows Defender 防火墙配置应显示 `Enabled=True`，封禁规则应为 `Inbound / Block / Any`。规则数量减少不一定是故障：已到期、进入白名单或成为孤立规则的地址会被自动清理。
+
 在线菜单选择 `4`，或在管理员 PowerShell 中运行：
 
 ```powershell
@@ -76,6 +87,8 @@ JSON 输出：
 ## 升级与卸载
 
 升级：重新运行一行命令并选择 `1`。升级会预检、备份并等待新服务真正就绪；失败时恢复旧程序、配置和服务。
+
+`v0.4.3` 修复了防火墙规则元数据被 Windows 以 `0x80070057` 拒绝的问题，同时修复了初始化失败后服务长期停在 `START_PENDING`、安装器一直等待的问题。服务启动失败时现在会进入 `Stopped` 并给出错误码和日志位置。
 
 手动安装必须先打开“以管理员身份运行”的 PowerShell：
 
