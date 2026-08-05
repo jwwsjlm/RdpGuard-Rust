@@ -7,10 +7,11 @@ use rdpguard::{
     doctor,
     language::Language,
     service,
+    sessions::active_public_rdp_session_sources,
 };
 
 const HELP: &str = "RdpGuard - temporary blocking for repeated RDP failures\n\n\
-Usage:\n  rdpguard --service\n  rdpguard --once [path options]\n  rdpguard --dry-run [path options]\n  rdpguard doctor [--json] [--language zh-CN|en-US] [path options]\n  rdpguard --version\n\n\
+Usage:\n  rdpguard --service\n  rdpguard --once [path options]\n  rdpguard --dry-run [path options]\n  rdpguard doctor [--json] [--language zh-CN|en-US] [path options]\n  rdpguard session-sources --json\n  rdpguard --version\n\n\
 Path options:\n  --config <file>  Configuration JSON\n  --state <file>   Persistent block state JSON\n  --log <file>     Operational log\n";
 
 enum Mode {
@@ -24,6 +25,7 @@ enum Mode {
         language: Language,
         paths: AppPaths,
     },
+    SessionSources,
 }
 
 fn main() -> ExitCode {
@@ -82,6 +84,14 @@ fn real_main() -> Result<u8> {
             }
             Ok(report.exit_code())
         }
+        Mode::SessionSources => {
+            let addresses: Vec<_> = active_public_rdp_session_sources()?
+                .into_iter()
+                .map(|address| address.to_string())
+                .collect();
+            println!("{}", serde_json::to_string(&addresses)?);
+            Ok(0)
+        }
     }
 }
 
@@ -139,6 +149,9 @@ fn parse_mode(arguments: &[String]) -> std::result::Result<Mode, UsageError> {
             language,
             paths,
         });
+    }
+    if arguments == ["session-sources", "--json"] {
+        return Ok(Mode::SessionSources);
     }
     let dry_run = match first.as_str() {
         "--once" => false,

@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $Repository = 'jwwsjlm/RdpGuard-Rust'
-$ReleaseTag = 'v0.4.0'
+$ReleaseTag = 'v0.4.1'
 
 function ConvertFrom-OnlineUtf8Base64 {
     param([Parameter(Mandatory)][string]$Value)

@@ -61,8 +61,9 @@ function Get-RdpGuardText {
         RepeatResetDays = @('无复犯后重置天数', 'Quiet days before repeat history resets')
         MaxActiveBlocks = @('最大活动封禁数', 'Maximum active blocks')
         HeartbeatMinutes = @('健康心跳间隔（分钟）', 'Health heartbeat interval (minutes)')
-        CurrentPublicSessions = @('检测到当前 RDP 公网来源', 'Current public RDP source addresses detected')
-        TrustCurrentSessions = @('是否将这些地址加入白名单？输入 y 添加；直接按 Enter 不添加', 'Add these addresses to the whitelist? Enter y to add; press Enter to leave unchanged')
+        CurrentPublicSessions = @('WTS 检测到已认证活动 RDP 会话报告的公网地址（请人工确认）', 'WTS found public addresses reported by authenticated active RDP sessions (verify manually)')
+        TrustCurrentSessions = @('仅在确认地址属于你时输入 y 加入白名单；直接按 Enter 不添加', 'Enter y only if you recognize these addresses; press Enter to leave unchanged')
+        SessionLookupWarning = @('CONN002：无法读取已认证活动 RDP 会话；已跳过白名单建议', 'CONN002: authenticated active RDP sessions could not be read; whitelist suggestion skipped')
         InvalidValue = @('输入无效', 'Invalid value')
         ElevationCancelled = @('管理员权限请求已取消或失败', 'Administrator elevation was cancelled or failed')
         InstallSuccess = @('RdpGuard 已安装并正在运行', 'RdpGuard is installed and running')
@@ -208,7 +209,8 @@ function Read-IntegerPrompt {
 function Get-InteractiveConfig {
     param(
         [Parameter(Mandatory)]$CurrentConfig,
-        [Parameter(Mandatory)][ValidateSet('zh-CN', 'en-US')][string]$Language
+        [Parameter(Mandatory)][ValidateSet('zh-CN', 'en-US')][string]$Language,
+        [Parameter(Mandatory)][string]$SessionSourceExecutable
     )
 
     Write-Host ''
@@ -228,7 +230,12 @@ function Get-InteractiveConfig {
             Write-Host "$((Get-RdpGuardText $Language InvalidValue)): $($_.Exception.Message)" -ForegroundColor Yellow
         }
     }
-    $currentPublic = @(Get-CurrentRdpPublicAddresses)
+    try {
+        $currentPublic = @(Get-CurrentRdpPublicAddresses -Executable $SessionSourceExecutable)
+    } catch {
+        Write-Host "$((Get-RdpGuardText $Language SessionLookupWarning)): $($_.Exception.Message)" -ForegroundColor Yellow
+        $currentPublic = @()
+    }
     if ($currentPublic.Count -gt 0) {
         Write-Host "$((Get-RdpGuardText $Language CurrentPublicSessions)): $($currentPublic -join ', ')" -ForegroundColor Yellow
         $trust = Read-Host (Get-RdpGuardText $Language TrustCurrentSessions)
@@ -290,16 +297,20 @@ function Test-PublicRdpAddress {
 }
 
 function Get-CurrentRdpPublicAddresses {
-    $port = 3389
+    param([Parameter(Mandatory)][string]$Executable)
+    $output = @(& $Executable session-sources --json 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        throw "session-sources exited with code $LASTEXITCODE`: $($output -join ' ')"
+    }
     try {
-        $registryPort = Get-ItemPropertyValue -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name PortNumber -ErrorAction Stop
-        if ($registryPort -ge 1 -and $registryPort -le 65535) { $port = [int]$registryPort }
-    } catch {}
-    if (-not (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue)) { return @() }
+        $addresses = @(($output -join [Environment]::NewLine) | ConvertFrom-Json)
+    } catch {
+        throw "session-sources returned invalid JSON: $($_.Exception.Message)"
+    }
     $results = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($connection in @(Get-NetTCPConnection -LocalPort $port -State Established -ErrorAction SilentlyContinue)) {
+    foreach ($address in $addresses) {
         $parsed = $null
-        if ([Net.IPAddress]::TryParse([string]$connection.RemoteAddress, [ref]$parsed) -and (Test-PublicRdpAddress $parsed)) {
+        if ([Net.IPAddress]::TryParse([string]$address, [ref]$parsed) -and (Test-PublicRdpAddress $parsed)) {
             [void]$results.Add($parsed.IPAddressToString)
         }
     }
@@ -422,7 +433,7 @@ try {
 } catch {
     throw "CFG001: Failed to load configuration $configSource. Repair the JSON or move it aside and rerun installation. $($_.Exception.Message)"
 }
-$selectedConfig = if ($NonInteractive) { $currentConfig } else { Get-InteractiveConfig $currentConfig $ResolvedLanguage }
+$selectedConfig = if ($NonInteractive) { $currentConfig } else { Get-InteractiveConfig $currentConfig $ResolvedLanguage $SourceExecutable }
 $selectedConfig = ConvertTo-ValidatedConfig $selectedConfig
 $hadPreviousConfig = Test-Path -LiteralPath $TargetConfig
 $hadPreviousExecutable = Test-Path -LiteralPath $TargetExecutable
@@ -450,11 +461,11 @@ try {
     Copy-Item -LiteralPath $SourceExecutable -Destination $PendingExecutable -Force
     Copy-Item -LiteralPath $SourceMonitor -Destination $PendingMonitor -Force
     $serviceVersion = & $PendingExecutable --version 2>&1
-    if ($LASTEXITCODE -ne 0 -or ($serviceVersion -join ' ') -notmatch '^rdpguard 0\.4\.0$') {
+    if ($LASTEXITCODE -ne 0 -or ($serviceVersion -join ' ') -notmatch '^rdpguard 0\.4\.1$') {
         throw "UPGRADE001: New service executable preflight failed: $($serviceVersion -join ' ')"
     }
     $monitorVersion = & $PendingMonitor --version 2>&1
-    if ($LASTEXITCODE -ne 0 -or ($monitorVersion -join ' ') -notmatch '^rdpguard-monitor 0\.4\.0$') {
+    if ($LASTEXITCODE -ne 0 -or ($monitorVersion -join ' ') -notmatch '^rdpguard-monitor 0\.4\.1$') {
         throw "UPGRADE001: New monitor executable preflight failed: $($monitorVersion -join ' ')"
     }
 

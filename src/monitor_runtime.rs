@@ -121,7 +121,16 @@ pub fn collect_snapshot<S: MonitorSources>(
             .count();
         for summary in &mut summaries {
             summary.blocked = actual.contains_key(&summary.ip);
-            summary.expires_at = actual.get(&summary.ip).map(|rule| rule.expires_at);
+            summary.expires_at = actual.get(&summary.ip).and_then(|rule| {
+                if rule.expires_at == chrono::DateTime::<Utc>::UNIX_EPOCH {
+                    state
+                        .blocks
+                        .get(&summary.ip)
+                        .map(|record| record.expires_at)
+                } else {
+                    Some(rule.expires_at)
+                }
+            });
         }
         if missing > 0 || orphaned > 0 {
             warnings.push(MonitorWarning {

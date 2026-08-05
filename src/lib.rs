@@ -13,6 +13,7 @@ pub mod monitor_runtime;
 pub mod monitor_ui;
 pub mod policy;
 pub mod service;
+pub mod sessions;
 pub mod state;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

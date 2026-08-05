@@ -8,11 +8,11 @@ use crate::{
     VERSION,
     app::AppPaths,
     config::Config,
-    connections::established_rdp_connections,
     engine::managed_rule,
     events::{query_recent_auth_events, query_recent_failures},
     firewall::{Firewall, WindowsFirewall, detect_rdp_port, firewall_policy_status},
     language::Language,
+    sessions::active_public_rdp_session_sources,
     state::load_state,
 };
 
@@ -167,20 +167,13 @@ pub fn run(paths: &AppPaths, language: Language) -> DoctorReport {
             ),
         )),
     }
-    if let Some(port) = active_port {
-        match established_rdp_connections(port) {
-            Ok(connections) => {
-                let mut public: Vec<_> = connections
-                    .into_iter()
-                    .map(|connection| connection.remote_ip)
-                    .filter(|ip| crate::policy::is_public_unicast(*ip))
-                    .collect();
-                public.sort();
-                public.dedup();
+    if active_port.is_some() {
+        match active_public_rdp_session_sources() {
+            Ok(public) => {
                 checks.push(healthy(
-                    "current RDP sources",
+                    "active authenticated RDP session sources",
                     if public.is_empty() {
-                        "no established public TCP sources".to_owned()
+                        "no authenticated active public RDP session sources".to_owned()
                     } else {
                         public
                             .iter()
@@ -191,8 +184,8 @@ pub fn run(paths: &AppPaths, language: Language) -> DoctorReport {
                 ));
             }
             Err(error) => checks.push(warning(
-                "current RDP sources",
-                "CONN001",
+                "active authenticated RDP session sources",
+                "CONN002",
                 format!("{error:#}"),
                 choose(
                     language,

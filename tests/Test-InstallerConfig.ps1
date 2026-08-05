@@ -24,6 +24,11 @@ function Assert-True {
 
 . "$PSScriptRoot\..\Install-RdpGuard.ps1" -LibraryMode
 
+$installerSource = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\Install-RdpGuard.ps1'))
+Assert-True (-not $installerSource.Contains('Get-NetTCPConnection -LocalPort')) 'installer must not treat established TCP connections as authenticated RDP sessions'
+Assert-True $installerSource.Contains('session-sources') 'installer must query authenticated RDP session sources'
+Assert-True $installerSource.Contains('WTS') 'installer guidance must identify the authenticated session source'
+
 Assert-Equal (Resolve-RdpGuardLanguage -Language auto -UiCulture 'zh-CN') 'zh-CN'
 Assert-Equal (Resolve-RdpGuardLanguage -Language auto -UiCulture 'en-US') 'en-US'
 Assert-Equal (Resolve-InstallerLanguageChoice -Raw 'l' -Current 'zh-CN') 'en-US'

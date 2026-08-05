@@ -1,4 +1,4 @@
-# RdpGuard v0.4.0 验收摘要
+# RdpGuard v0.4.1 验收摘要
 
 验收日期：2026-08-05
 
@@ -16,6 +16,7 @@
 - 升级预检两个 EXE 与配置，保留服务对象并支持二进制、配置、服务完整回滚。
 - `doctor` 支持中英文文本、JSON 和 0/1/2 退出码。
 - 历史监控器按需读取；Security/RdpCoreTS/状态/防火墙数据源相互独立，并以实际规则显示封禁状态。
+- 白名单建议只接受 WTS 中已认证活动 RDP 会话；旧规则的未知到期时间不会显示成 1970 年。
 
 ## 自动化覆盖
 
@@ -25,4 +26,4 @@
 
 ## 发布校验
 
-每个架构 ZIP 内两个 EXE 的 `--version` 必须为 `0.4.0`。Release 同时提供 SHA-256、CycloneDX SBOM 和 GitHub build provenance；ARM64 无原生 runner 时执行交叉构建与 PE 校验。
+每个架构 ZIP 内两个 EXE 的 `--version` 必须为 `0.4.1`。Release 同时提供 SHA-256、CycloneDX SBOM 和 GitHub build provenance；ARM64 无原生 runner 时执行交叉构建与 PE 校验。

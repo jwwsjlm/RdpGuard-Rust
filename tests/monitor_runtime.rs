@@ -15,6 +15,65 @@ struct PartialSources {
 
 struct ActualFirewallSources(StableSources);
 
+struct LegacyFirewallSources {
+    now: chrono::DateTime<Utc>,
+}
+
+impl MonitorSources for LegacyFirewallSources {
+    fn auth_events(&mut self, _minutes: u64) -> Result<EventQueryResult<AuthEvent>> {
+        Ok(EventQueryResult {
+            events: Vec::new(),
+            truncated: false,
+        })
+    }
+
+    fn guard_events(&mut self, _minutes: u64) -> Result<EventQueryResult<GuardFailureEvent>> {
+        Ok(EventQueryResult {
+            events: Vec::new(),
+            truncated: false,
+        })
+    }
+
+    fn state(&mut self) -> Result<State> {
+        Ok(State {
+            blocks: std::collections::HashMap::from([(
+                "198.51.100.20".parse().unwrap(),
+                BlockRecord {
+                    created_at: self.now,
+                    expires_at: self.now + chrono::Duration::hours(6),
+                    failures: 5,
+                },
+            )]),
+            ..State::default()
+        })
+    }
+
+    fn firewall_rules(&mut self) -> Result<Option<Vec<ManagedRule>>> {
+        Ok(Some(vec![ManagedRule {
+            ip: "198.51.100.20".parse().unwrap(),
+            scope: BlockScope::AllInbound,
+            port: None,
+            expires_at: chrono::DateTime::<Utc>::UNIX_EPOCH,
+            failures: 0,
+            repeat_count: 1,
+        }]))
+    }
+}
+
+#[test]
+fn legacy_firewall_rule_does_not_replace_real_expiration_with_unix_epoch() {
+    let now = Utc.with_ymd_and_hms(2026, 8, 5, 4, 30, 0).unwrap();
+    let mut sources = LegacyFirewallSources { now };
+
+    let snapshot = collect_snapshot(&mut sources, 60, now);
+
+    assert!(snapshot.summaries[0].blocked);
+    assert_eq!(
+        snapshot.summaries[0].expires_at,
+        Some(now + chrono::Duration::hours(6))
+    );
+}
+
 impl MonitorSources for ActualFirewallSources {
     fn auth_events(&mut self, minutes: u64) -> Result<EventQueryResult<AuthEvent>> {
         self.0.auth_events(minutes)

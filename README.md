@@ -27,7 +27,7 @@
 [0] 退出
 ```
 
-脚本会先请求 UAC，再在受保护目录中下载对应架构的正式版并校验 SHA-256。选择 `1` 后按提示配置；检测到当前公网 RDP 来源时，只会询问是否加入白名单，不会自动放行。
+脚本会先请求 UAC，再在受保护目录中下载对应架构的正式版并校验 SHA-256。选择 `1` 后按提示配置；白名单建议只读取 WTS 中已认证且当前活动的 RDP 会话，不会把普通 TCP 连接当成登录会话，也不会自动放行。WTS 地址由客户端报告，只有确认地址属于你时才能手动加入白名单。
 
 ## 查看历史登录
 
@@ -94,6 +94,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 ## 安全建议
 
 RdpGuard 用于降低爆破风险，不能替代 NLA、强密码、账户锁定、VPN 或 RD Gateway。公网开放 3389 会持续被扫描；条件允许时请限制来源地址。
+
+RdpGuard 的封禁规则由 Windows Defender 防火墙执行。若火绒或其他安全软件关闭了 Windows 防火墙配置，规则虽然存在也不会生效；可通过在线菜单 `[4]` 检查，按安全软件兼容要求决定是否重新启用，不要同时启用相互冲突的防火墙驱动。
 
 正式 EXE 暂未使用 Authenticode 签名。请通过 Release 的 SHA-256、CycloneDX SBOM 和 GitHub build provenance 验证来源。完整配置、构建和验证方法见[高级文档](docs/ADVANCED.md)，漏洞报告见[安全策略](SECURITY.md)。
 
